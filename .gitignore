@@ -2,3 +2,15 @@
 __pycache__
 node_modules
 
+# Environment variables
+.env
+.env.local
+
+# Scraper output
+# output/
+# *.json
+
+# Selenium
+chromedriver
+geckodriver
+

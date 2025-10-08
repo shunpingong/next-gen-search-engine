@@ -1,0 +1,264 @@
+{
+  "scraper": "google_custom_search",
+  "query": "Best places to visit in Japan",
+  "timestamp": "2025-10-08T23:18:40.189249",
+  "raw_data": {
+    "kind": "customsearch#search",
+    "url": {
+      "type": "application/json",
+      "template": "https://www.googleapis.com/customsearch/v1?q={searchTerms}&num={count?}&start={startIndex?}&lr={language?}&safe={safe?}&cx={cx?}&sort={sort?}&filter={filter?}&gl={gl?}&cr={cr?}&googlehost={googleHost?}&c2coff={disableCnTwTranslation?}&hq={hq?}&hl={hl?}&siteSearch={siteSearch?}&siteSearchFilter={siteSearchFilter?}&exactTerms={exactTerms?}&excludeTerms={excludeTerms?}&linkSite={linkSite?}&orTerms={orTerms?}&dateRestrict={dateRestrict?}&lowRange={lowRange?}&highRange={highRange?}&searchType={searchType}&fileType={fileType?}&rights={rights?}&imgSize={imgSize?}&imgType={imgType?}&imgColorType={imgColorType?}&imgDominantColor={imgDominantColor?}&alt=json"
+    },
+    "queries": {
+      "request": [
+        {
+          "title": "Google Custom Search - Best places to visit in Japan",
+          "totalResults": "748000000",
+          "searchTerms": "Best places to visit in Japan",
+          "count": 5,
+          "startIndex": 1,
+          "inputEncoding": "utf8",
+          "outputEncoding": "utf8",
+          "safe": "off",
+          "cx": "e2d97b9b3e7a445ae"
+        }
+      ],
+      "nextPage": [
+        {
+          "title": "Google Custom Search - Best places to visit in Japan",
+          "totalResults": "748000000",
+          "searchTerms": "Best places to visit in Japan",
+          "count": 5,
+          "startIndex": 6,
+          "inputEncoding": "utf8",
+          "outputEncoding": "utf8",
+          "safe": "off",
+          "cx": "e2d97b9b3e7a445ae"
+        }
+      ]
+    },
+    "context": {
+      "title": "fyp"
+    },
+    "searchInformation": {
+      "searchTime": 0.502216,
+      "formattedSearchTime": "0.50",
+      "totalResults": "748000000",
+      "formattedTotalResults": "748,000,000"
+    },
+    "items": [
+      {
+        "kind": "customsearch#result",
+        "title": "What are the best cities to visit in Japan for someone who has never ...",
+        "htmlTitle": "What are the <b>best cities to visit in Japan</b> for someone who has never ...",
+        "link": "https://www.reddit.com/r/travel/comments/14qrpsb/what_are_the_best_cities_to_visit_in_japan_for/",
+        "displayLink": "www.reddit.com",
+        "snippet": "Jul 4, 2023 ... IMO places that are a must are Tokyo, Mt. Fuji, Kyoto and Osaka. From Osaka you can use the JR line to make a day trip ...",
+        "htmlSnippet": "Jul 4, 2023 <b>...</b> IMO <b>places</b> that are a must are Tokyo, Mt. Fuji, Kyoto and Osaka. From Osaka you can use the JR line to make a day trip&nbsp;...",
+        "formattedUrl": "https://www.reddit.com/r/.../what_are_the_best_cities_to_visit_in_japan_for...",
+        "htmlFormattedUrl": "https://www.reddit.com/r/.../what_are_the_<b>best</b>_cities_to_<b>visit_in_japan</b>_for...",
+        "pagemap": {
+          "metatags": [
+            {
+              "og:image": "https://share.redd.it/preview/post/14qrpsb",
+              "theme-color": "#000000",
+              "og:image:width": "1200",
+              "og:type": "website",
+              "og:image:alt": "An image containing a preview of the post",
+              "twitter:card": "summary_large_image",
+              "twitter:title": "r/travel on Reddit: What are the best cities to visit in Japan for someone who has never been there and has 2 weeks?",
+              "og:site_name": "Reddit",
+              "og:title": "r/travel on Reddit: What are the best cities to visit in Japan for someone who has never been there and has 2 weeks?",
+              "og:image:height": "630",
+              "msapplication-navbutton-color": "#000000",
+              "og:description": "Posted by u/[Deleted Account] - 345 votes and 142 comments",
+              "twitter:image": "https://share.redd.it/preview/post/14qrpsb",
+              "apple-mobile-web-app-status-bar-style": "black",
+              "twitter:site": "@reddit",
+              "viewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+              "apple-mobile-web-app-capable": "yes",
+              "og:ttl": "600",
+              "og:url": "https://www.reddit.com/r/travel/comments/14qrpsb/what_are_the_best_cities_to_visit_in_japan_for/?seeker-session=true"
+            }
+          ]
+        }
+      },
+      {
+        "kind": "customsearch#result",
+        "title": "21 Best Places to Visit in Japan | U.S. News Travel",
+        "htmlTitle": "21 <b>Best Places to Visit in Japan</b> | U.S. News Travel",
+        "link": "https://travel.usnews.com/rankings/best-places-to-visit-in-japan/",
+        "displayLink": "travel.usnews.com",
+        "snippet": "5 days ago ... Best Places to Visit in Japan · Tokyo · Okinawa · Mount Fuji · Kyoto · Sapporo · Osaka · Nikko · Nara; Takayama; Shikoku; Matsumoto; Yokohama ...",
+        "htmlSnippet": "5 days ago <b>...</b> <b>Best Places to Visit in Japan</b> &middot; Tokyo &middot; Okinawa &middot; Mount Fuji &middot; Kyoto &middot; Sapporo &middot; Osaka &middot; Nikko &middot; Nara; Takayama; Shikoku; Matsumoto; Yokohama&nbsp;...",
+        "formattedUrl": "https://travel.usnews.com/rankings/best-places-to-visit-in-japan/",
+        "htmlFormattedUrl": "https://travel.usnews.com/rankings/<b>best</b>-<b>places-to-visit-in-japan</b>/",
+        "pagemap": {
+          "cse_thumbnail": [
+            {
+              "src": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRVqWAepKp4aQ7mZ9beOmeqgY3j5nMyrt0katVomJj_gOoXEMWQrNAZGE8&s",
+              "width": "238",
+              "height": "212"
+            }
+          ],
+          "metatags": [
+            {
+              "og:image": "https://travel.usnews.com/dims4/USNEWS/b789f3d/2147483647/resize/1200x630>/quality/85/format/webp/?url=https%3A%2F%2Ftravel.usnews.com%2Fimages%2Fdancers_main_445x280_BqXCxRh.jpg",
+              "og:type": "website",
+              "og:image:width": "1200",
+              "og:title": "The 21 Best Places to Visit in Japan.",
+              "og:image:height": "630",
+              "optimizely": "Optimizely is supported by this application but is not enabled for this page.",
+              "og:image:type": "image/jpg",
+              "fb:pages": "5834919267",
+              "og:description": "We rank the 21 Best Places to Visit in Japan. See which places our readers like the best, and vote for your favorites.",
+              "site": "Travel",
+              "viewport": "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0",
+              "zone": "Destinations/Rankings",
+              "og:url": "https://travel.usnews.com/rankings/best-places-to-visit-in-japan/"
+            }
+          ],
+          "cse_image": [
+            {
+              "src": "https://www.usnews.com/static-atlas/assets/img/travel/Badge-Vacations-Gold-Generic.svg"
+            }
+          ]
+        }
+      },
+      {
+        "kind": "customsearch#result",
+        "title": "Best places you've been to in Japan ? : r/JapanTravelTips",
+        "htmlTitle": "<b>Best places</b> you&#39;ve been to in <b>Japan</b> ? : r/JapanTravelTips",
+        "link": "https://www.reddit.com/r/JapanTravelTips/comments/1hdtt8s/best_places_youve_been_to_in_japan/",
+        "displayLink": "www.reddit.com",
+        "snippet": "Dec 14, 2024 ... Takayama and Kanazawa are different experiences. If you want onsens, Takayama is great (and hirayu-onsen). That's what I took from it. Kanazawa ...",
+        "htmlSnippet": "Dec 14, 2024 <b>...</b> Takayama and Kanazawa are different experiences. If you want onsens, Takayama is <b>great</b> (and hirayu-onsen). That&#39;s what I took from it. Kanazawa&nbsp;...",
+        "formattedUrl": "https://www.reddit.com/.../JapanTravelTips/.../best_places_youve_been_to_...",
+        "htmlFormattedUrl": "https://www.reddit.com/.../<b>Japan</b>TravelTips/.../<b>best</b>_<b>places</b>_youve_been_to_...",
+        "pagemap": {
+          "metatags": [
+            {
+              "og:image": "https://share.redd.it/preview/post/1hdtt8s",
+              "theme-color": "#000000",
+              "og:image:width": "1200",
+              "og:type": "website",
+              "og:image:alt": "An image containing a preview of the post",
+              "twitter:card": "summary_large_image",
+              "twitter:title": "r/JapanTravelTips on Reddit: Best places you’ve been to in Japan ?",
+              "og:site_name": "Reddit",
+              "og:title": "r/JapanTravelTips on Reddit: Best places you’ve been to in Japan ?",
+              "og:image:height": "630",
+              "msapplication-navbutton-color": "#000000",
+              "og:description": "Posted by u/[Deleted Account] - 178 votes and 207 comments",
+              "twitter:image": "https://share.redd.it/preview/post/1hdtt8s",
+              "apple-mobile-web-app-status-bar-style": "black",
+              "twitter:site": "@reddit",
+              "viewport": "width=device-width, initial-scale=1, viewport-fit=cover",
+              "apple-mobile-web-app-capable": "yes",
+              "og:ttl": "600",
+              "og:url": "https://www.reddit.com/r/JapanTravelTips/comments/1hdtt8s/best_places_youve_been_to_in_japan/?seeker-session=true"
+            }
+          ]
+        }
+      },
+      {
+        "kind": "customsearch#result",
+        "title": "10 best places to visit in Japan - Lonely Planet",
+        "htmlTitle": "10 <b>best places to visit in Japan</b> - Lonely Planet",
+        "link": "https://www.lonelyplanet.com/articles/best-places-to-visit-in-japan",
+        "displayLink": "www.lonelyplanet.com",
+        "snippet": "The 10 best places to visit in Japan · 1. Tokyo · 2. Kyoto · 3. Naoshima · 4. Mt Fuji · 5. Hiroshima · 6. Yakushima · 7. Kōya-san · 8. Okinawa and the Southwest ...",
+        "htmlSnippet": "The 10 <b>best places to visit in Japan</b> &middot; 1. Tokyo &middot; 2. Kyoto &middot; 3. Naoshima &middot; 4. Mt Fuji &middot; 5. Hiroshima &middot; 6. Yakushima &middot; 7. Kōya-san &middot; 8. Okinawa and the Southwest&nbsp;...",
+        "formattedUrl": "https://www.lonelyplanet.com/articles/best-places-to-visit-in-japan",
+        "htmlFormattedUrl": "https://www.lonelyplanet.com/articles/<b>best</b>-<b>places-to-visit-in-japan</b>",
+        "pagemap": {
+          "cse_thumbnail": [
+            {
+              "src": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQU1KbeBDSghCbJHA2ziGe5dS8hPiUjQSDrDzQ2tnXIuD4jDB7CczQXhfUB&s",
+              "width": "275",
+              "height": "183"
+            }
+          ],
+          "metatags": [
+            {
+              "og:image": "https://lp-cms-production.imgix.net/2025-08/shutterstock2495786275.jpg?w=600&h=400",
+              "og:type": "website",
+              "twitter:card": "summary_large_image",
+              "twitter:title": "The 10 best places to visit in Japan - Lonely Planet",
+              "og:site_name": "Lonely Planet",
+              "twitter:site:id": "15066760",
+              "og:title": "10 best places to visit in Japan",
+              "og:updated_time": "2025-08-28T10:00:55-05:00",
+              "title": "10 best places to visit in Japan - Lonely Planet",
+              "og:description": "Discover the 10 best places to visit in Japan, from Tokyo’s futuristic culture to Kyoto’s temples, Naoshima’s art, Mount Fuji, and Okinawa’s beaches",
+              "twitter:image": "https://lp-cms-production.imgix.net/2025-08/shutterstock2495786275.jpg?w=600&h=400",
+              "og:image:secure_url": "https://lp-cms-production.imgix.net/2025-08/shutterstock2495786275.jpg?w=600&h=400",
+              "article:publisher": "https://facebook.com/lonelyplanet",
+              "fb:app_id": "111537044496",
+              "twitter:site": "@lonelyplanet",
+              "article:modified_time": "2025-08-28T10:00:55-05:00",
+              "viewport": "width=device-width,initial-scale=1",
+              "twitter:description": "Japan is a country where tradition meets the latest in technology and fashion, where serene temples contrast with neon-lit city streetscapes, and historic…",
+              "og:url": "https://www.lonelyplanet.com/articles/best-places-to-visit-in-japan"
+            }
+          ],
+          "cse_image": [
+            {
+              "src": "https://lp-cms-production.imgix.net/2025-08/shutterstock2495786275.jpg?w=600&h=400"
+            }
+          ]
+        }
+      },
+      {
+        "kind": "customsearch#result",
+        "title": "Where to Visit in Japan (Other than Tokyo and Kyoto)?",
+        "htmlTitle": "<b>Where to Visit in Japan</b> (Other than Tokyo and Kyoto)?",
+        "link": "https://bizarrejourneys.com/where-to-visit-in-japan/",
+        "displayLink": "bizarrejourneys.com",
+        "snippet": "Where else to visit if your itinerary is centered around Tokyo? · Nikko: a wonderful alternative for sightseeing and easy hiking · Tohoku: the most underrated ...",
+        "htmlSnippet": "<b>Where</b> else to <b>visit</b> if your itinerary is centered around Tokyo? &middot; Nikko: a wonderful alternative for sightseeing and easy hiking &middot; Tohoku: the most underrated&nbsp;...",
+        "formattedUrl": "https://bizarrejourneys.com/where-to-visit-in-japan/",
+        "htmlFormattedUrl": "https://bizarrejourneys.com/where-to-<b>visit-in-japan</b>/",
+        "pagemap": {
+          "cse_thumbnail": [
+            {
+              "src": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR51pb8ZppvqjW0T7Xh-zfrZurUbb0S2G0HVOHg9ktOiWSIbS1LValp7ko&s",
+              "width": "275",
+              "height": "183"
+            }
+          ],
+          "metatags": [
+            {
+              "og:image": "https://bizarrejourneys.com/wp-content/uploads/2022/05/nakadori-church-mirror.jpg",
+              "og:type": "article",
+              "article:published_time": "2025-08-20T02:57:14+00:00",
+              "og:image:width": "2000",
+              "twitter:card": "summary_large_image",
+              "og:site_name": "Bizarre Journeys/Burcu Basar",
+              "author": "burcu",
+              "og:title": "Where to Visit in Japan (Other than Tokyo and Kyoto)?",
+              "og:image:height": "1333",
+              "twitter:label1": "Written by",
+              "twitter:label2": "Est. reading time",
+              "og:image:type": "image/jpeg",
+              "msapplication-tileimage": "https://i0.wp.com/bizarrejourneys.com/wp-content/uploads/2025/04/cropped-40.jpg?fit=270%2C270&ssl=1",
+              "og:description": "Where to visit in Japan? A model itinerary for those looking to add other destinations to their Japan itinerary on top of Kyoto and Tokyo.",
+              "article:publisher": "https://facebook.com/bizarrejourneys",
+              "article:author": "https://facebook.com/bizarrejourneys",
+              "twitter:data1": "burcu",
+              "twitter:data2": "21 minutes",
+              "article:modified_time": "2025-09-08T10:03:03+00:00",
+              "viewport": "width=device-width, initial-scale=1",
+              "og:locale": "en_US",
+              "og:url": "https://bizarrejourneys.com/where-to-visit-in-japan/"
+            }
+          ],
+          "cse_image": [
+            {
+              "src": "https://bizarrejourneys.com/wp-content/uploads/2022/05/nakadori-church-mirror.jpg"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

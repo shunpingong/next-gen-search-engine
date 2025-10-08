@@ -1,0 +1,51 @@
+{
+  "scraper": "serper",
+  "query": "Best places to visit in Japan",
+  "timestamp": "2025-10-08T23:13:24.204623",
+  "raw_data": {
+    "searchParameters": {
+      "q": "Best places to visit in Japan",
+      "type": "search",
+      "num": 5,
+      "engine": "google"
+    },
+    "organic": [
+      {
+        "title": "The Ultimate Japan Bucket List: 30 Unmissable Experiences",
+        "link": "https://tessomewhere.com/japan-bucket-list/",
+        "snippet": "Admire Mt Fuji from the Chureito Pagoda · Wander Through Thousands of Torii Gates at Fushimi Inari · Witness the Magic of Sakura During Cherry ...",
+        "date": "Feb 21, 2024",
+        "position": 1
+      },
+      {
+        "title": "21 Best Places to Visit in Japan | U.S. News Travel",
+        "link": "https://travel.usnews.com/rankings/best-places-to-visit-in-japan/",
+        "snippet": "Best Places to Visit in Japan · Tokyo · Okinawa · Mount Fuji · Kyoto · Sapporo · Osaka · Nikko · Nara; Takayama; Shikoku; Matsumoto; Yokohama ...",
+        "date": "5 days ago",
+        "position": 2
+      },
+      {
+        "title": "What are the best cities to visit in Japan for someone who ...",
+        "link": "https://www.reddit.com/r/travel/comments/14qrpsb/what_are_the_best_cities_to_visit_in_japan_for/",
+        "snippet": "IMO places that are a must are Tokyo, Mt. Fuji, Kyoto and Osaka. From Osaka you can use the JR line to make a day trip ...",
+        "date": "2 years ago",
+        "position": 3
+      },
+      {
+        "title": "15 beautiful places you must visit in Japan",
+        "link": "https://notanomadblog.com/most-beautiful-places-japan/",
+        "snippet": "Shirakawa-go · Higashiyama · The Golden Pavillion · Philosopher's Path · Kyomizu-dera · Kanmangafuchi Abyss · Arashiyama Bamboo Forest · Hirosaki.",
+        "date": "May 4, 2025",
+        "position": 4
+      },
+      {
+        "title": "7 Places To Visit In Japan For First Timers",
+        "link": "https://ilseonthego.com/places-to-visit-japan-first-timers/",
+        "snippet": "1) Tokyo: The iconic and exciting capital · 2) Hakone: A lush, relaxing oasis · 3) Kamakura: Historic and charming town outside of Tokyo · 4) Osaka ...",
+        "date": "Mar 8, 2025",
+        "position": 5
+      }
+    ],
+    "credits": 1
+  }
+}
