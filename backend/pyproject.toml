@@ -1,18 +1,38 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "Next-gen search engine backend with web scraping and metadata extraction"
+description = "Ghost Network - Tool-Augmented Generation API for Linux Kernel Security and Healthcare Research"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    # FastAPI and server
     "fastapi>=0.117.1",
     "uvicorn>=0.37.0",
-    # Web scraping dependencies
+    "pydantic>=2.0.0",
+    
+    # HTTP client for async API calls
+    "aiohttp>=3.9.0",
+    "httpx>=0.25.0",
+    
+    # Graph analysis
+    "networkx>=3.2.0",
+    
+    # Environment and configuration
+    "python-dotenv>=1.0.0",
+    
+    # Web scraping (existing)
     "requests>=2.31.0",
     "beautifulsoup4>=4.12.0",
     "selenium>=4.15.0",
-    "python-dotenv>=1.0.0",
     "duckduckgo-search>=4.0.0",
     "lxml>=4.9.0",
     "firecrawl>=4.3.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
 ]
