@@ -3,6 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import logging
+import os
+import aiohttp
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Import service modules (to be created)
 from services.github_service import GitHubService
@@ -70,6 +76,10 @@ class GraphBuildRequest(BaseModel):
 class VulnerabilityCheckRequest(BaseModel):
     packages: List[str]
     ecosystem: str = "Linux"
+
+
+class TavilySearchRequest(BaseModel):
+    query: str
 
 
 # ============================================================================
@@ -314,106 +324,6 @@ async def get_fuzzing_suggestions(
 
 
 # ============================================================================
-# DOMAIN 2: Healthcare Search Endpoints
-# ============================================================================
-
-@app.post("/api/healthcare/query")
-async def healthcare_query(request: HealthcareQueryRequest):
-    """
-    Main TAG endpoint for healthcare research.
-    
-    Workflow:
-    1. Search PubMed for relevant literature
-    2. Search local documents (if enabled)
-    3. Build citation graph
-    4. Compute PageRank/CheiRank on papers
-    5. Use local LLM for clinician-friendly summary
-    """
-    try:
-        logger.info(f"Healthcare query: {request.query}")
-        
-        # Step 1: PubMed Search
-        pubmed_results = await pubmed_service.search(
-            query=request.query,
-            specialty=request.specialty,
-            max_results=request.max_results
-        )
-        
-        # Step 2: Local document search (placeholder)
-        local_docs = []
-        if request.include_local_docs:
-            # TODO: Implement local document search
-            pass
-        
-        # Step 3: Build citation graph
-        citation_graph = await graph_service.build_citation_graph(
-            papers=pubmed_results.get("articles", [])
-        )
-        
-        # Step 4: LLM Synthesis
-        llm_summary = await llm_service.synthesize_healthcare_results(
-            query=request.query,
-            pubmed_data=pubmed_results,
-            local_docs=local_docs,
-            citation_graph=citation_graph
-        )
-        
-        return {
-            "query": request.query,
-            "pubmed_results": pubmed_results,
-            "local_documents": local_docs,
-            "citation_analysis": citation_graph,
-            "llm_synthesis": llm_summary,
-            "clinical_recommendations": llm_summary.get("recommendations", [])
-        }
-        
-    except Exception as e:
-        logger.error(f"Error in healthcare query: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/healthcare/pubmed/search")
-async def pubmed_search(
-    query: str = Query(..., description="Search query"),
-    max_results: int = Query(10, ge=1, le=100),
-    sort: str = Query("relevance", description="relevance, date, or citations")
-):
-    """Search PubMed literature"""
-    try:
-        results = await pubmed_service.search(
-            query=query,
-            max_results=max_results,
-            sort=sort
-        )
-        return results
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/healthcare/pubmed/article/{pmid}")
-async def get_pubmed_article(pmid: str):
-    """Get detailed article information from PubMed"""
-    try:
-        results = await pubmed_service.get_article(pmid)
-        return results
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/healthcare/pubmed/related/{pmid}")
-async def get_related_articles(
-    pmid: str,
-    max_results: int = Query(10, ge=1, le=50)
-):
-    """Get related articles from PubMed"""
-    try:
-        results = await pubmed_service.get_related(pmid, max_results)
-        return results
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============================================================================
 # LLM/AI Endpoints
 # ============================================================================
 
@@ -504,6 +414,66 @@ async def get_supported_domains():
             }
         ]
     }
+
+
+# ============================================================================
+# Tavily Search Endpoint
+# ============================================================================
+
+@app.post("/tavily")
+async def tavily_search(request: TavilySearchRequest):
+    """
+    Tavily search endpoint - proxy for Tavily API.
+    Converts query to Tavily API format and returns results.
+    """
+    try:
+        query = request.query
+        
+        logger.info(f"Received query: {query}")
+        
+        # Trim query if too long
+        MAX_QUERY_LENGTH = 400
+        trimmed_query = query[:MAX_QUERY_LENGTH] if len(query) > MAX_QUERY_LENGTH else query
+        
+        # Get Tavily API credentials from environment
+        TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+        TAVILY_ENDPOINT = os.getenv("TAVILY_ENDPOINT", "https://api.tavily.com/search")
+        
+        if not TAVILY_API_KEY:
+            raise HTTPException(status_code=500, detail="TAVILY_API_KEY not configured")
+        
+        # Make request to Tavily API
+        async with aiohttp.ClientSession() as session:
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {TAVILY_API_KEY}"
+            }
+            
+            payload = {
+                "query": trimmed_query,
+                "search_depth": "advanced",
+                "max_results": 5,
+                "include_answer": True,
+                "include_raw_content": False
+            }
+            
+            async with session.post(TAVILY_ENDPOINT, json=payload, headers=headers) as response:
+                if not response.ok:
+                    error_text = await response.text()
+                    logger.error(f"Tavily API Error: {error_text}")
+                    raise HTTPException(status_code=response.status, detail=error_text)
+                
+                data = await response.json()
+                logger.info("Tavily API Success")
+                logger.info(data)
+                return data
+                
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.error(f"Server Error: {str(error)}")
+        raise HTTPException(status_code=500, detail=str(error))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,11 @@ import os
 import aiohttp
 from typing import List, Dict, Any, Optional
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 
 logger = logging.getLogger(__name__)
 
