@@ -14,7 +14,6 @@ load_dotenv()
 from services.github_service import GitHubService
 from services.osv_service import OSVService
 from services.nvd_service import NVDService
-from services.pubmed_service import PubMedService
 from services.graph_service import GraphService
 from services.llm_service import LLMService
 
@@ -41,7 +40,6 @@ app.add_middleware(
 github_service = GitHubService()
 osv_service = OSVService()
 nvd_service = NVDService()
-pubmed_service = PubMedService()
 graph_service = GraphService()
 llm_service = LLMService()
 
@@ -103,7 +101,6 @@ def health_check():
             "github": github_service.is_configured(),
             "osv": True,  # Public API
             "nvd": True,  # Public API
-            "pubmed": True,  # Public API
             "llm": llm_service.is_available()
         }
     }
@@ -178,14 +175,16 @@ async def security_query(request: SecurityQueryRequest):
 async def github_search(
     query: str = Query(..., description="Search query"),
     search_type: str = Query("repositories", description="repositories, issues, or code"),
-    max_results: int = Query(10, ge=1, le=100)
+    max_results: int = Query(10, ge=1, le=100),
+    language: str = Query("en", description="Language filter (en for English)")  # Add parameter
 ):
     """Search GitHub for Linux kernel related content"""
     try:
         results = await github_service.search(
             query=query,
             search_type=search_type,
-            max_results=max_results
+            max_results=max_results,
+            language=language  # Pass to service
         )
         return results
     except Exception as e:
@@ -409,7 +408,7 @@ async def get_supported_domains():
                 "id": "healthcare-search",
                 "name": "Healthcare Literature Search",
                 "description": "Medical literature and clinical guideline search for healthcare professionals",
-                "tools": ["PubMed", "OpenAlex", "Local Documents", "Local LLM"],
+                "tools": ["OpenAlex", "Local Documents", "Local LLM"],
                 "use_cases": ["Clinical decision support", "Literature review", "Treatment protocols"]
             }
         ]

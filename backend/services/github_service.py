@@ -35,7 +35,9 @@ class GitHubService:
         self,
         query: str,
         search_type: str = "repositories",
-        max_results: int = 10
+        max_results: int = 10,
+        language: str = "en"
+
     ) -> Dict[str, Any]:
         """
         Generic GitHub search
