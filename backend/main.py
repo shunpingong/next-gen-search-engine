@@ -403,13 +403,6 @@ async def get_supported_domains():
                 "description": "Security research, fuzzing, and vulnerability analysis for Linux kernel",
                 "tools": ["GitHub", "OSV.dev", "NVD", "Local LLM"],
                 "use_cases": ["Vulnerability discovery", "Fuzzing strategy", "Code hotspot analysis"]
-            },
-            {
-                "id": "healthcare-search",
-                "name": "Healthcare Literature Search",
-                "description": "Medical literature and clinical guideline search for healthcare professionals",
-                "tools": ["OpenAlex", "Local Documents", "Local LLM"],
-                "use_cases": ["Clinical decision support", "Literature review", "Treatment protocols"]
             }
         ]
     }
