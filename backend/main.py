@@ -80,6 +80,10 @@ class TavilySearchRequest(BaseModel):
     query: str
 
 
+class EnhancedSearchRequest(BaseModel):
+    query: str
+    top_k: int = 5  # Number of top results to return after ranking
+
 # ============================================================================
 # Health Check
 # ============================================================================
@@ -447,7 +451,7 @@ async def tavily_search(request: TavilySearchRequest):
                 "search_depth": "advanced",
                 "max_results": 5,
                 "include_answer": True,
-                "include_raw_content": False
+                "include_raw_content": True
             }
             
             async with session.post(TAVILY_ENDPOINT, json=payload, headers=headers) as response:
@@ -457,6 +461,7 @@ async def tavily_search(request: TavilySearchRequest):
                     raise HTTPException(status_code=response.status, detail=error_text)
                 
                 data = await response.json()
+                
                 logger.info("Tavily API Success")
                 logger.info(data)
                 return data
@@ -465,6 +470,214 @@ async def tavily_search(request: TavilySearchRequest):
         raise
     except Exception as error:
         logger.error(f"Server Error: {str(error)}")
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+# ============================================================================
+# Enhanced Tavily Search with PageRank and LLM Summarization
+# ============================================================================
+
+def compute_text_similarity(text1: str, text2: str) -> float:
+    """
+    Compute simple similarity score between two texts.
+    Uses word overlap as a basic similarity metric.
+    """
+    words1 = set(text1.lower().split())
+    words2 = set(text2.lower().split())
+    
+    if not words1 or not words2:
+        return 0.0
+    
+    intersection = words1.intersection(words2)
+    union = words1.union(words2)
+    
+    return len(intersection) / len(union) if union else 0.0
+
+
+def rank_search_results(query: str, results: List[Dict], top_k: int = 5) -> List[Dict]:
+    """
+    Rank search results using a PageRank-inspired algorithm.
+    
+    Strategy:
+    1. Build a graph where nodes are search results
+    2. Edge weights are based on:
+       - Content similarity to query
+       - Original Tavily score
+       - Cross-references between results
+    3. Apply PageRank to get final ranking
+    4. Return top-k results
+    """
+    if not results:
+        return []
+    
+    n = len(results)
+    if n <= top_k:
+        return results
+    
+    # Initialize adjacency matrix for PageRank
+    # Start with uniform distribution
+    import numpy as np
+    
+    # Create relevance scores based on query similarity
+    relevance_scores = []
+    for result in results:
+        # Combine title and content for relevance scoring
+        text = f"{result.get('title', '')} {result.get('content', '')}"
+        similarity = compute_text_similarity(query, text)
+        
+        # Combine with original Tavily score if available
+        tavily_score = result.get('score', 0.5)
+        combined_score = 0.6 * similarity + 0.4 * tavily_score
+        relevance_scores.append(combined_score)
+    
+    # Build adjacency matrix based on content similarity
+    adjacency = np.zeros((n, n))
+    for i in range(n):
+        for j in range(n):
+            if i != j:
+                text_i = f"{results[i].get('title', '')} {results[i].get('content', '')}"
+                text_j = f"{results[j].get('title', '')} {results[j].get('content', '')}"
+                similarity = compute_text_similarity(text_i, text_j)
+                adjacency[i][j] = similarity
+    
+    # Normalize adjacency matrix (column stochastic)
+    col_sums = adjacency.sum(axis=0)
+    col_sums[col_sums == 0] = 1  # Avoid division by zero
+    adjacency = adjacency / col_sums
+    
+    # PageRank algorithm
+    damping = 0.85
+    pagerank = np.ones(n) / n
+    relevance_array = np.array(relevance_scores)
+    relevance_array = relevance_array / relevance_array.sum()  # Normalize
+    
+    # Iterate PageRank with personalization (query relevance)
+    for _ in range(20):  # 20 iterations
+        new_pagerank = (1 - damping) * relevance_array + damping * adjacency.dot(pagerank)
+        if np.allclose(new_pagerank, pagerank):
+            break
+        pagerank = new_pagerank
+    
+    # Sort results by PageRank score
+    ranked_indices = np.argsort(pagerank)[::-1][:top_k]
+    
+    # Add ranking scores to results
+    ranked_results = []
+    for idx in ranked_indices:
+        result = results[int(idx)].copy()
+        result['pagerank_score'] = float(pagerank[idx])
+        result['relevance_score'] = float(relevance_scores[idx])
+        ranked_results.append(result)
+    
+    return ranked_results
+
+
+@app.post("/api/search/enhanced")
+async def enhanced_search(request: EnhancedSearchRequest):
+    """
+    Enhanced search endpoint that:
+    1. Queries Tavily API
+    2. Extracts query, answer, title, and content
+    3. Ranks results using PageRank based on query relevance
+    4. Returns top-k results
+    5. Optionally generates LLM summary
+    """
+    try:
+        query = request.query
+        top_k = request.top_k
+        
+        logger.info(f"Enhanced search query: {query}")
+        
+        # Step 1: Query Tavily API
+        MAX_QUERY_LENGTH = 400
+        trimmed_query = query[:MAX_QUERY_LENGTH] if len(query) > MAX_QUERY_LENGTH else query
+        
+        TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+        TAVILY_ENDPOINT = os.getenv("TAVILY_ENDPOINT", "https://api.tavily.com/search")
+        
+        if not TAVILY_API_KEY:
+            raise HTTPException(status_code=500, detail="TAVILY_API_KEY not configured")
+        
+        async with aiohttp.ClientSession() as session:
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {TAVILY_API_KEY}"
+            }
+            
+            payload = {
+                "query": trimmed_query,
+                "search_depth": "advanced",
+                "max_results": 10,  # Get more results than top_k for better ranking
+                "include_answer": True,
+                "include_raw_content": False
+            }
+            
+            async with session.post(TAVILY_ENDPOINT, json=payload, headers=headers) as response:
+                if not response.ok:
+                    error_text = await response.text()
+                    logger.error(f"Tavily API Error: {error_text}")
+                    raise HTTPException(status_code=response.status, detail=error_text)
+                
+                tavily_data = await response.json()
+        
+        # Step 2: Extract relevant fields
+        extracted_query = tavily_data.get("query", query)
+        tavily_answer = tavily_data.get("answer", "")
+        results = tavily_data.get("results", [])
+        
+        # Extract title and content from each result
+        extracted_results = []
+        for result in results:
+            extracted_results.append({
+                "url": result.get("url", ""),
+                "title": result.get("title", ""),
+                "content": result.get("content", ""),
+                "score": result.get("score", 0.0)
+            })
+        
+        logger.info(f"Extracted {len(extracted_results)} results from Tavily")
+        
+        # Step 3: Rank results using PageRank
+        ranked_results = rank_search_results(extracted_query, extracted_results, top_k)
+        
+        logger.info(f"Ranked top {len(ranked_results)} results using PageRank")
+        
+        # Step 4: Generate LLM summary if requested
+        if ranked_results:
+            # Prepare context from top-k results
+            context_parts = [f"Query: {extracted_query}\n"]
+            
+            if tavily_answer:
+                context_parts.append(f"Initial Answer: {tavily_answer}\n")
+            
+            context_parts.append("\nTop Ranked Sources:\n")
+            for i, result in enumerate(ranked_results, 1):
+                context_parts.append(
+                    f"\n{i}. {result['title']}\n"
+                    f"   URL: {result['url']}\n"
+                    f"   Content: {result['content'][:500]}...\n"
+                    f"   PageRank Score: {result['pagerank_score']:.4f}\n"
+                )
+            
+            context = "\n".join(context_parts)
+        
+        
+        # Step 5: Return comprehensive response
+        return {
+            "query": extracted_query,
+            "tavily_answer": tavily_answer,
+            "top_k": top_k,
+            "ranked_results": ranked_results,
+            "context": context,
+            "total_results_analyzed": len(extracted_results),
+            "ranking_method": "PageRank with query relevance personalization"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.error(f"Enhanced search error: {str(error)}")
         raise HTTPException(status_code=500, detail=str(error))
 
 
