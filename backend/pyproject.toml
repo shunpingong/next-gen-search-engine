@@ -9,19 +9,15 @@ dependencies = [
     "fastapi>=0.117.1",
     "uvicorn>=0.37.0",
     "pydantic>=2.0.0",
-    
     # HTTP client for async API calls
     "aiohttp>=3.9.0",
     "httpx>=0.25.0",
-    
     # Graph analysis
     "networkx>=3.2.0",
     "numpy>=1.24.0",
     "scipy>=1.10.0",
-    
     # Environment and configuration
     "python-dotenv>=1.0.0",
-    
     # Web scraping (existing)
     "requests>=2.31.0",
     "beautifulsoup4>=4.12.0",
@@ -29,6 +25,7 @@ dependencies = [
     "duckduckgo-search>=4.0.0",
     "lxml>=4.9.0",
     "firecrawl>=4.3.6",
+    "datasets>=4.4.2",
 ]
 
 [project.optional-dependencies]
