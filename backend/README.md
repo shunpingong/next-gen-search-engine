@@ -1,22 +1,12 @@
-# Ghost Network - Tool-Augmented Generation API
+# NextGen Web Search API
 
-This backend provides REST API endpoints for the "Ghost Network" project - a Tool-Augmented Generation (TAG) system for Linux Kernel Security research and Healthcare literature search.
+This backend provides a powerful REST API for web search with advanced ranking using PageRank and Tavily integration.
 
 ## Features
 
-### Domain 1: Linux Kernel Security
-
-- **GitHub Integration**: Search repositories, issues, and code
-- **Vulnerability Detection**: Integration with OSV.dev and NVD APIs
-- **Call Graph Analysis**: Build and analyze code call graphs
-- **PageRank/CheiRank**: Identify critical code paths and functions
-- **Fuzzing Strategy Generation**: AI-assisted fuzzing recommendations
-
-### Domain 2: Healthcare Literature Search
-
-- **PubMed Integration**: Search medical literature
-- **Citation Analysis**: Build and analyze citation graphs
-- **Clinical Synthesis**: Clinician-friendly summaries
+- **Tavily Search Integration**: Access web search results via Tavily API
+- **PageRank Algorithm**: Advanced result ranking based on content similarity and relevance
+- **Personalized Ranking**: Query-aware PageRank for improved relevance scoring
 
 ## Setup
 
@@ -37,12 +27,8 @@ cp .env.example .env
 
 Edit `.env` and add your API keys:
 
-- **GITHUB_TOKEN** (Required): Get from https://github.com/settings/tokens
-  - Needed for GitHub API access (higher rate limits)
-- **NVD_API_KEY** (Optional): Register at https://nvd.nist.gov/developers/request-an-api-key
-  - Improves rate limits for CVE queries
-- **PUBMED_EMAIL** (Required): Your email address
-  - Required by NCBI for PubMed API usage
+- **TAVILY_API_KEY** (Required): Get from https://tavily.com/
+  - Needed for web search functionality
 
 ### 3. Run the Server
 
@@ -72,228 +58,162 @@ The API will be available at:
 GET /health
 ```
 
-Check status of all integrated services.
+Check status of the API.
 
-### Linux Kernel Security Domain
+### Tavily Search
 
-#### Main Security Query (TAG)
+#### Search Web
 
 ```
-POST /api/security/query
+POST /tavily
 ```
 
-Main tool-augmented generation endpoint. Combines GitHub search, vulnerability detection, graph analysis, and LLM synthesis.
+Perform a web search using Tavily API.
 
 **Request Body:**
 
 ```json
 {
-  "query": "networking vulnerabilities in Linux kernel",
-  "domain": "linux-kernel",
-  "max_results": 10,
-  "include_vulnerabilities": true,
-  "compute_graph": true
+  "query": "machine learning best practices"
 }
 ```
 
-#### GitHub Search
-
-```
-GET /api/security/github/search?query=fuzzing&search_type=repositories
-```
-
-#### Repository Issues
-
-```
-GET /api/security/github/repo/{owner}/{repo}/issues
-```
-
-#### Vulnerability Check
-
-```
-POST /api/security/vulnerabilities/check
-```
-
-Check packages against OSV.dev vulnerability database.
-
-#### CVE Details
-
-```
-GET /api/security/vulnerabilities/cve/{cve_id}
-```
-
-#### Build Call Graph
-
-```
-POST /api/security/graph/build
-```
-
-Build call graph and compute PageRank/CheiRank.
-
-**Request Body:**
+**Response:**
 
 ```json
 {
-  "repo_owner": "torvalds",
-  "repo_name": "linux",
-  "file_pattern": "*.c",
-  "compute_pagerank": true,
-  "compute_cheirank": true
+  "query": "machine learning best practices",
+  "answer": "Summary answer from Tavily...",
+  "results": [
+    {
+      "url": "https://example.com",
+      "title": "Article Title",
+      "content": "Article content...",
+      "score": 0.95
+    }
+  ]
 }
 ```
 
-#### Fuzzing Suggestions
-
-```
-GET /api/security/fuzzing/suggestions?repo_owner=torvalds&repo_name=linux
-```
-
-Get AI-generated fuzzing strategy recommendations.
-
-### Healthcare Domain
-
-#### Main Healthcare Query (TAG)
-
-```
-POST /api/healthcare/query
-```
-
-Main tool-augmented generation endpoint for medical literature.
-
-**Request Body:**
-
-```json
-{
-  "query": "treatment protocols for hypertension",
-  "specialty": "cardiology",
-  "max_results": 10,
-  "include_local_docs": false
-}
-```
-
-#### PubMed Search
-
-```
-GET /api/healthcare/pubmed/search?query=cancer+treatment&max_results=20
-```
-
-#### Article Details
-
-```
-GET /api/healthcare/pubmed/article/{pmid}
-```
-
-#### Related Articles
-
-```
-GET /api/healthcare/pubmed/related/{pmid}
-```
-
-### Graph Analysis
+### PageRank
 
 #### Compute PageRank
 
 ```
-GET /api/graph/pagerank?nodes=A,B,C&edges=A-B,B-C,C-A
+POST /pagerank
 ```
 
-#### Compute CheiRank
+Compute PageRank scores for documents with optional personalization.
 
-```
-GET /api/graph/cheirank?nodes=A,B,C&edges=A-B,B-C,C-A
+**Request Body:**
+
+```json
+{
+  "documents": [
+    {
+      "id": "doc1",
+      "title": "First Document",
+      "content": "Content of first document...",
+      "score": 0.8
+    },
+    {
+      "id": "doc2",
+      "title": "Second Document",
+      "content": "Content of second document...",
+      "score": 0.6
+    }
+  ],
+  "query": "optional query for personalization",
+  "top_k": 5
+}
 ```
 
-### LLM Services
+**Response:**
 
-#### Summarize Text
-
-```
-POST /api/llm/summarize?text=<long_text>&max_length=200
-```
-
-#### Question Answering
-
-```
-POST /api/llm/qa?question=<question>&context=<context>
-```
+```json
+{
+  "scores": {
+    "doc1": 0.55,
+    "doc2": 0.45
+  },
+  "ranked_documents": [
+    {
+      "id": "doc1",
+      "title": "First Document",
+      "content": "Content of first document...",
+      "pagerank_score": 0.55
+    }
+  ],
+  "total_documents": 2,
+  "iterations": 20,
+  "personalized_by_query": true
+}
 
 ## Architecture
 
 ```
+
 backend/
-├── main.py                 # FastAPI app with all endpoints
-├── services/               # Service modules
-│   ├── github_service.py   # GitHub API integration
-│   ├── osv_service.py      # OSV.dev vulnerability API
-│   ├── nvd_service.py      # NVD/CVE API
-│   ├── pubmed_service.py   # PubMed E-utilities API
-│   ├── graph_service.py    # PageRank/CheiRank computation
-│   └── llm_service.py      # Local LLM integration
-└── scrapers/               # Existing scraper modules
-```
+├── main.py # FastAPI app with all endpoints
+├── scrapers/ # Web scraper modules
+├── services/ # Service modules
+└── pyproject.toml # Project dependencies
+
+````
 
 ## Example Usage
 
-### Example 1: Security Analysis
+### Example 1: Tavily Search
 
 ```python
 import requests
 
-# Main TAG query for Linux kernel security
+# Search the web using Tavily
 response = requests.post(
-    "http://localhost:8000/api/security/query",
+    "http://localhost:8000/tavily",
     json={
-        "query": "race conditions in network drivers",
-        "domain": "networking",
-        "max_results": 10,
-        "include_vulnerabilities": true,
-        "compute_graph": true
+        "query": "machine learning best practices"
     }
 )
 
 result = response.json()
-print(f"Found {len(result['github_results']['repos'])} repositories")
-print(f"Identified {len(result['vulnerabilities'])} vulnerabilities")
-print(f"Top fuzzing targets: {result['recommendations']}")
-```
+print(f"Query: {result['query']}")
+print(f"Answer: {result['answer']}")
+print(f"Found {len(result['results'])} results")
+for r in result['results']:
+    print(f"  - {r['title']}: {r['url']}")
+````
 
-### Example 2: Healthcare Search
+### Example 2: PageRank Document Ranking
 
 ```python
-# Search medical literature
+# Rank documents using PageRank
 response = requests.post(
-    "http://localhost:8000/api/healthcare/query",
+    "http://localhost:8000/pagerank",
     json={
-        "query": "COVID-19 treatment protocols",
-        "specialty": "infectious disease",
-        "max_results": 20
+        "documents": [
+            {
+                "id": "doc1",
+                "title": "Machine Learning Guide",
+                "content": "Comprehensive guide to machine learning...",
+                "score": 0.8
+            },
+            {
+                "id": "doc2",
+                "title": "Deep Learning Basics",
+                "content": "Introduction to deep learning...",
+                "score": 0.6
+            }
+        ],
+        "query": "machine learning best practices",
+        "top_k": 5
     }
 )
 
 result = response.json()
-print(f"Found {result['total_count']} relevant articles")
-print(f"Clinical recommendations: {result['clinical_recommendations']}")
-```
-
-### Example 3: Graph Analysis
-
-```python
-# Build call graph for a repository
-response = requests.post(
-    "http://localhost:8000/api/security/graph/build",
-    json={
-        "repo_owner": "torvalds",
-        "repo_name": "linux",
-        "file_pattern": "*.c",
-        "compute_pagerank": true,
-        "compute_cheirank": true
-    }
-)
-
-graph = response.json()
-print(f"Critical nodes (high PageRank + CheiRank):")
-for node in graph['critical_nodes'][:5]:
-    print(f"  - {node['node']}: {node['criticality']}")
+print(f"Total documents: {result['total_documents']}")
+for doc in result['ranked_documents']:
+    print(f"  - {doc['title']}: {doc['pagerank_score']:.4f}")
 ```
 
 ## Development
@@ -311,27 +231,28 @@ black .
 ruff check .
 ```
 
+## Dependencies
+
+- FastAPI: Web framework
+- aiohttp: Async HTTP client
+- NumPy & SciPy: Numerical computing and graph analysis
+- NetworkX: Graph algorithms
+- Pydantic: Data validation
+
 ## API Rate Limits
 
-- **GitHub**: 5,000 requests/hour (authenticated), 60/hour (unauthenticated)
-- **NVD**: 50 requests/30 seconds (with API key), 5/30 seconds (without)
-- **PubMed**: 3 requests/second (with API key), 3/second (without, but limited)
+- **Tavily**: Check Tavily API documentation for rate limits
 
 ## Future Enhancements
 
-1. **Local LLM Integration**: Add Ollama/llama.cpp integration for synthesis
-2. **Code Parsing**: Implement actual C/C++ parsing for call graph extraction
-3. **Caching**: Add Redis caching for API responses
-4. **Authentication**: Add API key authentication
-5. **WebSocket**: Real-time updates for long-running queries
-6. **Database**: Store analysis results and graph data
-7. **Docker**: Containerization for easy deployment
+1. **Caching**: Add Redis caching for API responses
+2. **Authentication**: Add API key authentication
+3. **WebSocket**: Real-time updates for long-running queries
+4. **Database**: Store search results and analysis data
+5. **Docker**: Containerization for easy deployment
 
 ## References
 
-- [GitHub REST API](https://docs.github.com/en/rest)
-- [OSV.dev API](https://osv.dev/docs/)
-- [NVD API](https://nvd.nist.gov/developers)
-- [PubMed E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25501/)
+- [Tavily API Documentation](https://tavily.com/docs)
 - [PageRank Algorithm](https://en.wikipedia.org/wiki/PageRank)
-- [CheiRank Algorithm](https://arxiv.org/abs/1003.1925)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)

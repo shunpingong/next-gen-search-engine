@@ -1,7 +1,7 @@
 [project]
-name = "backend"
-version = "0.1.0"
-description = "Ghost Network - Tool-Augmented Generation API for Linux Kernel Security and Healthcare Research"
+name = "websearch-engine"
+version = "1.0.0"
+description = "NextGen Web Search Engine with PageRank-based result ranking and Tavily integration"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -18,14 +18,6 @@ dependencies = [
     "scipy>=1.10.0",
     # Environment and configuration
     "python-dotenv>=1.0.0",
-    # Web scraping (existing)
-    "requests>=2.31.0",
-    "beautifulsoup4>=4.12.0",
-    "selenium>=4.15.0",
-    "duckduckgo-search>=4.0.0",
-    "lxml>=4.9.0",
-    "firecrawl>=4.3.6",
-    "datasets>=4.4.2",
 ]
 
 [project.optional-dependencies]
