@@ -18,6 +18,8 @@ dependencies = [
     "scipy>=1.10.0",
     # Environment and configuration
     "python-dotenv>=1.0.0",
+    # TextGrad for automatic differentiation via text
+    "textgrad>=0.1.0",
 ]
 
 [project.optional-dependencies]
