@@ -11,6 +11,10 @@ import numpy as np
 # Load environment variables from .env file
 load_dotenv()
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # TextGrad imports
 try:
     import textgrad as tg
@@ -19,16 +23,23 @@ except ImportError:
     TEXTGRAD_AVAILABLE = False
     logger.warning("TextGrad not available. Install with: pip install textgrad")
 
+# ============================================================================
+# OpenRouter API Configuration
+# ============================================================================
+# Set OpenRouter API key from .env file
 os.environ["OPENROUTER_API_KEY"] = os.getenv("OPENROUTER_API_KEY")
-# Use OpenRouter with litellm (experimental engine)
+
+# Configure the backward engine (used for generating feedback/gradients in TextGrad)
+# CHANGE MODEL HERE: Replace the model string to use different OpenRouter models
+# Format: "experimental:openrouter/<provider>/<model-name>"
+# Popular options:
+#   - "experimental:openrouter/openai/gpt-4o" (most capable)
+#   - "experimental:openrouter/openai/gpt-4-turbo"
+#   - "experimental:openrouter/anthropic/claude-3.5-sonnet"
+#   - "experimental:openrouter/google/gemini-pro-1.5"
+#   - "experimental:openrouter/meta-llama/llama-3.1-70b-instruct"
+# See all available models at: https://openrouter.ai/models
 tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-
 
 app = FastAPI(
     title="NextGen Web Search API",
@@ -60,29 +71,32 @@ class PageRankRequest(BaseModel):
     top_k: Optional[int] = None  # Optional: return only top-k results
 
 
-class TextGradOptimizeRequest(BaseModel):
-    """Request model for text optimization using TextGrad."""
-    text: str  # The text to optimize (e.g., prompt, instruction, or content)
-    objective: str  # The optimization objective or goal
-    num_iterations: Optional[int] = 3  # Number of optimization iterations
-    model: Optional[str] = None  # LLM model to use (defaults to gpt-3.5-turbo)
+class QueryRequest(BaseModel):
+    """Request model for query refinement."""
+    query: str
+    max_iterations: Optional[int] = 3
 
 
-class TextGradSolutionRequest(BaseModel):
-    """Request model for solution optimization using TextGrad."""
-    problem: str  # The problem statement
-    initial_solution: str  # The initial solution to optimize
-    evaluation_criteria: List[str]  # List of criteria to evaluate against
-    num_iterations: Optional[int] = 3  # Number of optimization iterations
-    model: Optional[str] = None  # LLM model to use
+class AnswerRequest(BaseModel):
+    """Request model for answer refinement."""
+    question: str
+    context: str
+    initial_answer: Optional[str] = None  # Optional: if provided, refine this answer instead of generating one
+    max_iterations: Optional[int] = 3
 
 
-class TextGradGenerateRequest(BaseModel):
-    """Request model for generate-and-optimize using TextGrad."""
-    task_description: str  # Description of the task to solve
-    num_candidates: Optional[int] = 3  # Number of initial candidates
-    optimization_rounds: Optional[int] = 2  # Optimization rounds for best candidate
-    model: Optional[str] = None  # LLM model to use
+class PlanRequest(BaseModel):
+    """Request model for plan refinement."""
+    user_query: str
+    execution_feedback: str
+    max_iterations: Optional[int] = 3
+
+
+class PromptOptimizeRequest(BaseModel):
+    """Request model for prompt optimization."""
+    eval_inputs: List[str]
+    desired_behavior: str
+    max_iterations: Optional[int] = 10
 
 # ============================================================================
 # Health Check
@@ -91,14 +105,15 @@ class TextGradGenerateRequest(BaseModel):
 @app.get("/")
 def read_root():
     return {
-        "message": "NextGen Web Search API",
-        "version": "1.0.0",
+        "message": "NextGen Web Search API with TextGrad Optimization",
+        "version": "2.0.0",
         "endpoints": [
             "POST /tavily",
             "POST /pagerank",
-            "POST /textgrad/optimize",
-            "POST /textgrad/solution",
-            "POST /textgrad/generate"
+            "POST /textgrad/refine-query - Optimize search queries",
+            "POST /textgrad/refine-answer - Improve reasoning and correctness",
+            "POST /textgrad/refine-plan - Improve multi-step tool plans",
+            "POST /textgrad/optimize-prompt - Offline system prompt tuning"
         ]
     }
 
@@ -304,71 +319,46 @@ async def pagerank_endpoint(request: PageRankRequest):
 
 
 # ============================================================================
-# TextGrad Endpoints - Automatic "Differentiation" via Text
+# TextGrad Endpoints - LLM-as-Judge Optimization for FYP
 # ============================================================================
 
-@app.post("/textgrad/optimize")
-async def textgrad_optimize(request: TextGradOptimizeRequest):
+# Global system prompt for advanced endpoints
+SYSTEM_PROMPT = tg.Variable(
+    "You are an AI search assistant specialized in query optimization and information retrieval. "
+    "Provide accurate, well-structured responses based on available context. "
+    "When refining queries or answers, preserve original intent while improving clarity and precision. "
+    "Think step-by-step and never add information not present in the given context.",
+    requires_grad=True,
+    role_description="System prompt to the language model"
+)
+
+# CHANGE MODEL HERE: Set the OpenRouter model for advanced endpoints
+# This model is used for query/answer/plan refinement and prompt optimization
+ADVANCED_MODEL = None  # Will be initialized on first use
+ADVANCED_OPTIMIZER = tg.TextualGradientDescent(parameters=[SYSTEM_PROMPT])
+
+def get_advanced_model():
+    """Lazy initialization of advanced model."""
+    global ADVANCED_MODEL
+    if ADVANCED_MODEL is None:
+        ADVANCED_MODEL = tg.BlackboxLLM(
+            "experimental:openrouter/openai/gpt-3.5-turbo",
+            system_prompt=SYSTEM_PROMPT
+        )
+    return ADVANCED_MODEL
+
+    
+@app.post("/textgrad/refine-query")
+async def refine_query(request: QueryRequest):
     """
-    Optimize text using TextGrad's automatic differentiation via text.
+    Refine a search query using TextGrad optimization with LLM-as-judge.
     
-    This endpoint uses the TextGrad framework to iteratively improve text prompts,
-    instructions, or content based on a specified objective. TextGrad employs
-    textual gradients - natural language feedback from LLMs - to optimize the input.
+    This endpoint uses an iterative optimization process to improve search queries by:
+    - Making them more specific and clear
+    - Better suited for web search
+    - More likely to return relevant results
     
-    **Reference:**
-    - Paper: "TextGrad: Automatic 'Differentiation' via Text" (Yuksekgonul et al., 2024)
-    - ArXiv: https://arxiv.org/abs/2406.07496
-    - Website: https://textgrad.com/
-    
-    **Request Body:**
-    - `text` (str, required): The initial text to optimize. This can be a prompt,
-      instruction, piece of content, or any text you want to improve.
-    - `objective` (str, required): The optimization objective or goal. Describe what
-      you want the optimized text to achieve (e.g., "be more clear and concise",
-      "generate better summaries", "be more persuasive").
-    - `num_iterations` (int, optional): Number of optimization iterations to perform.
-      Default is 3. More iterations may yield better results but take longer.
-    - `model` (str, optional): The LLM model to use for optimization. Defaults to
-      "gpt-3.5-turbo". Supported models include OpenAI models (gpt-3.5-turbo,
-      gpt-4, etc.) and other compatible models.
-    
-    **Response:**
-    Returns a JSON object containing:
-    - `optimized_text`: The final optimized version of your text
-    - `original_text`: The original input text for comparison
-    - `iterations`: Number of iterations performed
-    - `improvement_history`: List showing the text evolution at each iteration
-    - `objective`: The optimization objective used
-    - `model_used`: The LLM model that performed the optimization
-    
-    **Example Usage:**
-    ```python
-    import requests
-    
-    response = requests.post(
-        "http://localhost:8000/textgrad/optimize",
-        json={
-            "text": "Write a summary of the document",
-            "objective": "Create clear, concise, and engaging summaries",
-            "num_iterations": 3,
-            "model": "gpt-3.5-turbo"
-        }
-    )
-    result = response.json()
-    print(f"Optimized: {result['optimized_text']}")
-    ```
-    
-    **Use Cases:**
-    - Prompt engineering: Optimize prompts for better LLM responses
-    - Content improvement: Enhance clarity, engagement, or persuasiveness
-    - Instruction refinement: Make instructions clearer and more actionable
-    - Template optimization: Improve email templates, messages, or documents
-    
-    **Notes:**
-    - Requires OpenAI API key set in OPENAI_API_KEY environment variable
-    - Processing time increases with number of iterations
-    - Results depend on the quality of the objective description
+    The optimization uses an LLM-as-judge approach to evaluate and improve the query.
     """
     try:
         if not TEXTGRAD_AVAILABLE:
@@ -377,125 +367,101 @@ async def textgrad_optimize(request: TextGradOptimizeRequest):
                 detail="TextGrad not available. Install with: pip install textgrad"
             )
         
-        model = request.model or "experimental:openrouter/openai/gpt-3.5-turbo"
-        logger.info(f"TextGrad optimize request: text length={len(request.text)}, "
-                   f"objective='{request.objective[:50]}...', iterations={request.num_iterations}")
+        logger.info(f"Query refinement request: '{request.query[:50]}...', iterations={request.max_iterations}")
         
-        # Set up TextGrad backward engine (for generating feedback/gradients)
+        # CHANGE BACKWARD ENGINE HERE: Set model for query evaluation
         tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
         
-        # Create a Variable for the text to optimize
-        text_var = tg.Variable(
-            request.text,
+        model = get_advanced_model()
+        original_query = request.query
+        
+        # Create a variable for the query
+        query_var = tg.Variable(
+            original_query,
             requires_grad=True,
-            role_description="text content to be optimized"
+            role_description="search query to be refined"
         )
         
-        # Create optimizer
-        optimizer = tg.TGD(parameters=[text_var])
+        optimizer = tg.TextualGradientDescent(parameters=[query_var])
         
-        # Create loss function based on the objective
-        loss_fn = tg.TextLoss(request.objective)
-        
-        # Optimization loop
-        optimization_history = []
-        for i in range(request.num_iterations):
-            loss = loss_fn(text_var)
+        # Optimization loop following paper pattern
+        for iteration in range(request.max_iterations):
+            optimizer.zero_grad()
+            
+            # Define the loss function (evaluation criteria)
+            loss_instruction = f"""
+            Compare the refined query against the original query: "{original_query}"
+            
+            CRITICAL CONSTRAINTS:
+            1. Do NOT add information, details, or specifics not present in the original
+            2. Do NOT add command words like "show", "find", "get", "list" unless already present
+            3. Do NOT remove or weaken location context (e.g., "near me", "my area", "local")
+            4. Do NOT hallucinate locations, dates, activities, or specifics
+            5. Keep the query natural for search engines (avoid conversational prefixes)
+            
+            PRESERVE from original:
+            - Location indicators (near me, nearby, local, in my area)
+            - Scope and intent
+            - Key search terms
+            - Personal context (me, my, our)
+            
+            Score higher if the refined query:
+            - improves clarity using ONLY original information
+            - enhances search engine compatibility
+            - fixes grammar or structure issues
+            - maintains or strengthens location context
+            - stays concise and searchable
+            
+            Score lower if the refined query:
+            - adds/removes information
+            - adds unnecessary command words
+            - weakens location or personal context
+            - becomes less searchable
+            - changes the user's intent
+            
+            Provide specific feedback for improvement.
+            """
+            loss_fn = tg.TextLoss(loss_instruction)
+            
+            # Do the forward pass and compute loss
+            loss = loss_fn(query_var)
+            
+            # Perform the backward pass and compute gradients
             loss.backward()
+            
+            # Update the query variable
             optimizer.step()
             
-            optimization_history.append({
-                "iteration": i + 1,
-                "feedback": loss.value if hasattr(loss, 'value') else str(loss),
-                "text_length": len(text_var.value)
-            })
-            
-            logger.info(f"Iteration {i + 1}/{request.num_iterations} complete")
+            # Log the progress after each iteration
+            logger.info(f"\n{'='*80}")
+            logger.info(f"Iteration {iteration + 1}/{request.max_iterations} - Query Refinement")
+            logger.info(f"Original: {original_query}")
+            logger.info(f"Current:  {query_var.value}")
+            logger.info(f"{'='*80}\n")
         
-        result = {
-            "original_text": request.text,
-            "optimized_text": text_var.value,
-            "objective": request.objective,
-            "iterations": request.num_iterations,
-            "optimization_history": optimization_history,
-            "model_used": model
+        return {
+            "original_query": original_query,
+            "refined_query": query_var.value,
+            "system_prompt_snapshot": SYSTEM_PROMPT.value
         }
-        
-        logger.info(f"TextGrad optimization complete. Original length: {len(request.text)}, "
-                   f"Optimized length: {len(text_var.value)}")
-        
-        return result
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in TextGrad optimization: {str(e)}")
+        logger.error(f"Error in query refinement: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/textgrad/solution")
-async def textgrad_optimize_solution(request: TextGradSolutionRequest):
+@app.post("/textgrad/refine-answer")
+async def refine_answer(request: AnswerRequest):
     """
-    Optimize a solution to a problem using TextGrad with multiple evaluation criteria.
+    Refine an answer using TextGrad optimization with context-aware evaluation.
     
-    This endpoint is designed for complex problem-solving scenarios where you have an
-    initial solution that needs iterative improvement based on multiple criteria.
-    TextGrad uses textual gradients to refine the solution across all specified criteria.
-    
-    **Reference:**
-    - Paper: "TextGrad: Automatic 'Differentiation' via Text" (Yuksekgonul et al., 2024)
-    - ArXiv: https://arxiv.org/abs/2406.07496
-    - Website: https://textgrad.com/
-    
-    **Request Body:**
-    - `problem` (str, required): The problem statement or description of what needs
-      to be solved.
-    - `initial_solution` (str, required): Your initial solution or approach to the
-      problem. This will be iteratively improved.
-    - `evaluation_criteria` (List[str], required): List of criteria to evaluate and
-      optimize the solution against. Examples: ["correctness", "efficiency",
-      "readability", "maintainability", "performance"].
-    - `num_iterations` (int, optional): Number of optimization iterations. Default is 3.
-    - `model` (str, optional): The LLM model to use. Defaults to "gpt-3.5-turbo".
-    
-    **Response:**
-    Returns a JSON object containing:
-    - `optimized_solution`: The final optimized solution
-    - `original_solution`: The initial solution for comparison
-    - `problem`: The problem statement
-    - `iterations`: Number of iterations performed
-    - `evaluation_criteria`: The criteria used for optimization
-    - `improvement_log`: Detailed log of improvements at each iteration
-    - `model_used`: The LLM model used
-    
-    **Example Usage:**
-    ```python
-    import requests
-    
-    response = requests.post(
-        "http://localhost:8000/textgrad/solution",
-        json={
-            "problem": "Create a function to find all prime numbers up to n",
-            "initial_solution": "def find_primes(n):\n    return [x for x in range(2, n+1) if all(x % y != 0 for y in range(2, x))]",
-            "evaluation_criteria": ["correctness", "efficiency", "readability"],
-            "num_iterations": 3
-        }
-    )
-    result = response.json()
-    print(f"Optimized solution: {result['optimized_solution']}")
-    ```
-    
-    **Use Cases:**
-    - Code optimization: Improve code quality, performance, and readability
-    - Algorithm refinement: Enhance algorithmic solutions
-    - System design: Iteratively improve architecture and design decisions
-    - Problem-solving: Refine solutions to complex technical or business problems
-    - Multi-objective optimization: Balance trade-offs across multiple criteria
-    
-    **Notes:**
-    - Requires OpenAI API key in OPENAI_API_KEY environment variable
-    - More evaluation criteria and iterations increase processing time
-    - The quality of criteria descriptions affects optimization results
+    This endpoint improves answers by:
+    - Ensuring factual accuracy against provided context
+    - Eliminating hallucinations
+    - Improving logical clarity and reasoning
+    - Making answers more complete and helpful
     """
     try:
         if not TEXTGRAD_AVAILABLE:
@@ -504,253 +470,324 @@ async def textgrad_optimize_solution(request: TextGradSolutionRequest):
                 detail="TextGrad not available. Install with: pip install textgrad"
             )
         
-        model = request.model or "experimental:openrouter/openai/gpt-3.5-turbo"
-        logger.info(f"TextGrad solution optimization: problem length={len(request.problem)}, "
-                   f"criteria={request.evaluation_criteria}, iterations={request.num_iterations}")
+        logger.info(f"Answer refinement request: question='{request.question[:50]}...', iterations={request.max_iterations}")
         
-        # Set up TextGrad
+        # CHANGE BACKWARD ENGINE HERE: Set model for answer evaluation
         tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
         
-        # Create a Variable for the solution to optimize
-        solution_var = tg.Variable(
-            request.initial_solution,
-            requires_grad=True,
-            role_description="solution to the given problem"
-        )
+        model = get_advanced_model()
         
-        # Create a Variable for the problem (non-trainable)
-        problem_var = tg.Variable(
-            request.problem,
-            requires_grad=False,
-            role_description="problem statement"
-        )
-        
-        # Create optimizer
-        optimizer = tg.TGD(parameters=[solution_var])
-        
-        # Optimization loop with multiple criteria
-        improvement_log = []
-        for i in range(request.num_iterations):
-            iteration_feedback = []
-            
-            for criterion in request.evaluation_criteria:
-                # Create loss function for each criterion
-                evaluation_instruction = (
-                    f"Evaluate the following solution to this problem: {request.problem}\n\n"
-                    f"Focus on: {criterion}\n"
-                    f"Provide specific, actionable feedback for improvement."
-                )
-                loss_fn = tg.TextLoss(evaluation_instruction)
-                
-                # Compute loss and collect feedback
-                loss = loss_fn(solution_var)
-                iteration_feedback.append({
-                    "criterion": criterion,
-                    "feedback": loss.value if hasattr(loss, 'value') else str(loss)
-                })
-                
-                # Backward pass (accumulates gradients)
-                loss.backward()
-            
-            # Update the solution
-            optimizer.step()
-            
-            improvement_log.append({
-                "iteration": i + 1,
-                "criteria_feedback": iteration_feedback,
-                "solution_length": len(solution_var.value)
-            })
-            
-            logger.info(f"Iteration {i + 1}/{request.num_iterations} complete")
-        
-        result = {
-            "problem": request.problem,
-            "original_solution": request.initial_solution,
-            "optimized_solution": solution_var.value,
-            "evaluation_criteria": request.evaluation_criteria,
-            "iterations": request.num_iterations,
-            "improvement_log": improvement_log,
-            "model_used": model
-        }
-        
-        logger.info(f"TextGrad solution optimization complete")
-        
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in TextGrad solution optimization: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/textgrad/generate")
-async def textgrad_generate_and_optimize(request: TextGradGenerateRequest):
-    """
-    Generate multiple candidate solutions and optimize the best one using TextGrad.
-    
-    This endpoint combines solution generation with optimization. It's useful when you
-    want to explore multiple approaches to a task and then refine the most promising one.
-    TextGrad helps both in the exploration and refinement phases.
-    
-    **Reference:**
-    - Paper: "TextGrad: Automatic 'Differentiation' via Text" (Yuksekgonul et al., 2024)
-    - ArXiv: https://arxiv.org/abs/2406.07496
-    - Website: https://textgrad.com/
-    
-    **Request Body:**
-    - `task_description` (str, required): Description of the task to solve. Be specific
-      about what you want to accomplish.
-    - `num_candidates` (int, optional): Number of initial candidate solutions to generate.
-      Default is 3. More candidates increase exploration but take longer.
-    - `optimization_rounds` (int, optional): Number of optimization rounds to apply to
-      the selected best candidate. Default is 2.
-    - `model` (str, optional): The LLM model to use. Defaults to "gpt-3.5-turbo".
-    
-    **Response:**
-    Returns a JSON object containing:
-    - `task_description`: The original task description
-    - `candidates`: List of all initial candidate solutions generated
-    - `best_candidate`: The candidate selected for optimization
-    - `optimized_result`: The final optimized solution with full optimization details
-    - `selection_rationale`: Explanation of why this candidate was chosen
-    - `model_used`: The LLM model used
-    
-    **Example Usage:**
-    ```python
-    import requests
-    
-    response = requests.post(
-        "http://localhost:8000/textgrad/generate",
-        json={
-            "task_description": "Write a function to efficiently check if a string is a palindrome",
-            "num_candidates": 5,
-            "optimization_rounds": 3,
-            "model": "gpt-4"
-        }
-    )
-    result = response.json()
-    print(f"Best optimized solution: {result['optimized_result']['optimized_text']}")
-    ```
-    
-    **Use Cases:**
-    - Creative problem solving: Explore multiple approaches before settling on one
-    - Code generation: Generate and refine code solutions
-    - Content creation: Create multiple drafts and optimize the best one
-    - Strategy development: Generate strategic options and refine the top choice
-    - A/B testing preparation: Generate variants for testing
-    
-    **Workflow:**
-    1. Generate `num_candidates` initial solutions based on task description
-    2. Evaluate candidates (currently selects the first; can be extended with ranking)
-    3. Apply TextGrad optimization to the best candidate for `optimization_rounds`
-    4. Return all candidates plus the optimized best solution
-    
-    **Notes:**
-    - Requires OpenAI API key in OPENAI_API_KEY environment variable
-    - Processing time scales with num_candidates × optimization_rounds
-    - Consider starting with fewer candidates and rounds, then increasing as needed
-    - The current implementation uses a simplified candidate selection; production
-      versions could implement more sophisticated ranking
-    """
-    try:
-        if not TEXTGRAD_AVAILABLE:
-            raise HTTPException(
-                status_code=503,
-                detail="TextGrad not available. Install with: pip install textgrad"
-            )
-        
-        model = request.model or "experimental:openrouter/openai/gpt-3.5-turbo"
-        logger.info(f"TextGrad generate-and-optimize: task='{request.task_description[:50]}...', "
-                   f"candidates={request.num_candidates}, rounds={request.optimization_rounds}")
-        
-        # Set up TextGrad
-        tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
-        
-        # Create model for generation using the model string directly
-        generation_model = tg.BlackboxLLM(model)
-        
-        # Generate multiple candidates
-        candidates = []
-        task_var = tg.Variable(
-            request.task_description,
-            requires_grad=False,
-            role_description="task description"
-        )
-        
-        for i in range(request.num_candidates):
-            candidate_prompt = f"Provide a solution for the following task:\n{request.task_description}\n\nProvide solution {i+1}:"
-            candidate_var = tg.Variable(
-                candidate_prompt,
+        # If initial_answer is provided (from your LLM Synthesis stage), use it
+        # Otherwise, generate an initial answer (for standalone testing)
+        if request.initial_answer:
+            logger.info("Using provided initial answer from LLM Synthesis stage")
+            initial_response_value = request.initial_answer
+        else:
+            logger.info("Generating initial answer using MODEL")
+            # Generate initial answer (forward pass)
+            question_prompt = f"{request.question}\n\nContext:\n{request.context}"
+            question_var = tg.Variable(
+                question_prompt,
                 requires_grad=False,
-                role_description="generation prompt"
+                role_description="question with context"
             )
             
-            response = generation_model(candidate_var)
-            candidates.append({
-                "candidate_id": i + 1,
-                "solution": response.value
-            })
-            logger.info(f"Generated candidate {i + 1}/{request.num_candidates}")
+            # Get initial answer from the model
+            initial_response = model(question_var)
+            initial_response_value = initial_response.value
         
-        # Select best candidate (simplified: use first candidate)
-        # In production, you might want to rank them first
-        best_candidate = candidates[0]
-        selection_rationale = "Selected first candidate for optimization (can be extended with ranking)"
-        
-        # Optimize the best candidate
-        solution_var = tg.Variable(
-            best_candidate["solution"],
+        # Initialize the variable to optimize
+        answer_var = tg.Variable(
+            initial_response_value,
             requires_grad=True,
-            role_description="solution to optimize"
+            role_description="answer to be refined"
         )
         
-        optimizer = tg.TGD(parameters=[solution_var])
+        # Set up the optimizer
+        optimizer = tg.TextualGradientDescent(parameters=[answer_var])
         
-        # Create evaluation instruction
-        evaluation_instruction = (
-            f"Evaluate the following solution for this task: {request.task_description}\n"
-            f"Provide specific, actionable feedback for improvement. "
-            f"Focus on correctness, clarity, and completeness."
-        )
-        loss_fn = tg.TextLoss(evaluation_instruction)
-        
-        # Optimization loop
-        optimization_history = []
-        for i in range(request.optimization_rounds):
-            loss = loss_fn(solution_var)
+        # Optimization loop following paper pattern
+        for iteration in range(request.max_iterations):
+            optimizer.zero_grad()
+            
+            # Define the loss function (evaluation criteria)
+            loss_instruction = f"""
+            Given the evidence context: {request.context}
+            Evaluate the answer to: {request.question}
+            
+            CRITICAL REQUIREMENTS:
+            - Answer MUST be fully supported by the provided context
+            - Do NOT add facts, details, or information not present in the context
+            - Do NOT make assumptions beyond what's explicitly stated
+            - Include ALL relevant information from the context (be complete, not minimal)
+            
+            Penalize severely:
+            - hallucinations or fabricated facts not in the context
+            - information not supported by the context
+            - speculation or assumptions beyond the context
+            - being incomplete when context provides more relevant details
+            
+            Reward:
+            - accurate use of ALL relevant context-provided information
+            - completeness: include all pertinent facts from context
+            - logical clarity and clear reasoning
+            - proper structure and coherence
+            - staying within context bounds while being thorough
+            
+            BALANCE: Be complete (use all relevant context) but never hallucinate (add nothing beyond context).
+            
+            Provide specific feedback for improvement.
+            """
+            loss_fn = tg.TextLoss(loss_instruction)
+            
+            # Do the forward pass and compute loss
+            loss = loss_fn(answer_var)
+            
+            # Perform the backward pass and compute gradients
             loss.backward()
+            
+            # Update the answer variable
             optimizer.step()
             
-            optimization_history.append({
-                "round": i + 1,
-                "feedback": loss.value if hasattr(loss, 'value') else str(loss),
-                "solution_length": len(solution_var.value)
-            })
-            
-            logger.info(f"Optimization round {i + 1}/{request.optimization_rounds} complete")
+            # Log the progress after each iteration
+            logger.info(f"\n{'='*80}")
+            logger.info(f"Iteration {iteration + 1}/{request.max_iterations} - Answer Refinement")
+            logger.info(f"Question: {request.question}")
+            logger.info(f"Initial:  {initial_response_value[:100]}...")
+            logger.info(f"Current:  {answer_var.value[:100]}...")
+            logger.info(f"{'='*80}\n")
         
-        result = {
-            "task_description": request.task_description,
-            "candidates": candidates,
-            "best_candidate": best_candidate,
-            "selection_rationale": selection_rationale,
-            "optimized_result": {
-                "original_text": best_candidate["solution"],
-                "optimized_text": solution_var.value,
-                "optimization_history": optimization_history
-            },
-            "model_used": model
+        return {
+            "question": request.question,
+            "context": request.context,
+            "initial_answer": initial_response_value,
+            "refined_answer": answer_var.value,
+            "system_prompt_snapshot": SYSTEM_PROMPT.value
         }
-        
-        logger.info(f"TextGrad generate-and-optimize complete")
-        
-        return result
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in TextGrad generate-and-optimize: {str(e)}")
+        logger.error(f"Error in answer refinement: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/textgrad/refine-plan")
+async def refine_plan(request: PlanRequest):
+    """
+    Refine a tool execution plan using TextGrad optimization.
+    
+    This endpoint optimizes plans by:
+    - Ensuring logical ordering of steps
+    - Minimizing unnecessary steps
+    - Avoiding problematic tool choices
+    - Learning from execution feedback
+    """
+    try:
+        if not TEXTGRAD_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="TextGrad not available. Install with: pip install textgrad"
+            )
+        
+        logger.info(f"Plan refinement request: query='{request.user_query[:50]}...', iterations={request.max_iterations}")
+        
+        # CHANGE BACKWARD ENGINE HERE: Set model for plan evaluation
+        tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
+        
+        model = get_advanced_model()
+        
+        # Generate initial plan
+        plan_prompt = f"User query: {request.user_query}\nGenerate a detailed tool execution plan."
+        plan_var_init = tg.Variable(
+            plan_prompt,
+            requires_grad=False,
+            role_description="plan generation prompt"
+        )
+        
+        initial_response = model(plan_var_init)
+        
+# Create plan variable for optimization
+        plan_var = tg.Variable(
+            initial_response.value,
+            requires_grad=True,
+            role_description="execution plan to be refined"
+        )
+        
+        # Set up the optimizer
+        optimizer = tg.TextualGradientDescent(parameters=[plan_var])
+        
+        # Optimization loop following paper pattern
+        for iteration in range(request.max_iterations):
+            optimizer.zero_grad()
+            
+            # Define the loss function (evaluation criteria)
+            loss_instruction = f"""
+            Evaluate the tool execution plan for: {request.user_query}
+            
+            Consider this execution feedback: {request.execution_feedback}
+            
+            CRITICAL REQUIREMENTS:
+            - Plan must directly address the user query requirements
+            - Steps must be realistic and executable with available tools
+            - Do NOT add unnecessary or speculative steps
+            - Do NOT assume tools or capabilities not mentioned
+            
+            Evaluate based on:
+            - logical ordering of steps (dependent steps after prerequisites)
+            - minimal and efficient steps (no redundancy)
+            - avoidance of unnecessary or unavailable tools
+            - direct response to execution feedback issues
+            - feasibility and practicality
+            
+            Penalize:
+            - illogical step ordering
+            - redundant or unnecessary steps
+            - ignoring execution feedback
+            - adding steps not relevant to the query
+            
+            Provide specific feedback for improvement.
+            """
+            loss_fn = tg.TextLoss(loss_instruction)
+            
+            # Do the forward pass and compute loss
+            loss = loss_fn(plan_var)
+            
+            # Perform the backward pass and compute gradients
+            loss.backward()
+            
+            # Update the plan variable
+            optimizer.step()
+            
+            # Log the progress after each iteration
+            logger.info(f"\n{'='*80}")
+            logger.info(f"Iteration {iteration + 1}/{request.max_iterations} - Plan Refinement")
+            logger.info(f"User Query: {request.user_query}")
+            logger.info(f"Initial Plan:\n{initial_response.value[:200]}...")
+            logger.info(f"Current Plan:\n{plan_var.value[:200]}...")
+            logger.info(f"{'='*80}\n")
+        
+        return {
+            "user_query": request.user_query,
+            "initial_plan": initial_response.value,
+            "refined_plan": plan_var.value,
+            "execution_feedback_used": request.execution_feedback,
+            "system_prompt_snapshot": SYSTEM_PROMPT.value
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in plan refinement: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/textgrad/optimize-prompt")
+async def optimize_prompt(request: PromptOptimizeRequest):
+    """
+    Optimize the system prompt itself using TextGrad.
+    
+    This endpoint optimizes the global system prompt by:
+    - Evaluating responses on test inputs
+    - Iteratively improving the system prompt
+    - Ensuring desired behavior (helpful, correct, concise, safe)
+    
+    This is meta-optimization: optimizing the prompt that guides all other responses.
+    """
+    try:
+        if not TEXTGRAD_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="TextGrad not available. Install with: pip install textgrad"
+            )
+        
+        logger.info(f"Prompt optimization request: {len(request.eval_inputs)} inputs, iterations={request.max_iterations}")
+        
+        # CHANGE BACKWARD ENGINE HERE: Set model for prompt evaluation
+        tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
+        
+        model = get_advanced_model()
+        
+# Store original system prompt
+        original_prompt = SYSTEM_PROMPT.value
+        
+        # Optimization loop following paper pattern exactly
+        for iteration in range(request.max_iterations):
+            # Prepare batch of inputs and desired outputs
+            batch_x = request.eval_inputs
+            batch_y = [request.desired_behavior] * len(batch_x)  # Same desired behavior for all
+            
+            ADVANCED_OPTIMIZER.zero_grad()
+            
+            # Do the forward pass: generate responses for batch of inputs
+            responses = []
+            for eval_input in batch_x:
+                input_var = tg.Variable(
+                    eval_input,
+                    requires_grad=False,
+                    role_description="evaluation input"
+                )
+                response = model(input_var)
+                responses.append(response)
+            
+            # Compute losses for each (response, desired_behavior) pair
+            losses = []
+            for response, desired in zip(responses, batch_y):
+                loss_instruction = f"""
+                Evaluate whether this response matches the desired behavior: {desired}
+                
+                Response: {response.value}
+                
+                CRITICAL REQUIREMENTS:
+                - Response must align with the desired behavior criteria
+                - Evaluate objectively against each criterion
+                - Provide actionable feedback for system prompt improvement
+                
+                Rate based on:
+                - helpfulness: Does it provide useful, relevant information?
+                - correctness: Is the information accurate and factual?
+                - conciseness: Is it clear without unnecessary verbosity?
+                - safety: Does it avoid harmful, biased, or inappropriate content?
+                
+                Penalize:
+                - responses that miss the desired behavior
+                - verbose or unclear responses
+                - incorrect or misleading information
+                - unsafe or inappropriate content
+                
+                Provide specific feedback on how to improve the system prompt to better achieve the desired behavior.
+                """
+                loss_fn = tg.TextLoss(loss_instruction)
+                loss = loss_fn(response)
+                losses.append(loss)
+            
+            # Sum all losses (following paper pattern)
+            total_loss = tg.sum(losses)
+            
+            # Perform the backward pass and compute gradients
+            total_loss.backward()
+            
+            # Update the system prompt
+            ADVANCED_OPTIMIZER.step()
+            
+            # Log the progress after each iteration
+            logger.info(f"\n{'='*80}")
+            logger.info(f"Iteration {iteration + 1}/{request.max_iterations} - System Prompt Optimization")
+            logger.info(f"Original Prompt: {original_prompt}")
+            logger.info(f"Current Prompt:  {SYSTEM_PROMPT.value}")
+            logger.info(f"Batch Size: {len(batch_x)} inputs")
+            logger.info(f"{'='*80}\n")
+        
+        return {
+            "status": "system prompt optimized",
+            "original_system_prompt": original_prompt,
+            "final_system_prompt": SYSTEM_PROMPT.value
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in prompt optimization: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
