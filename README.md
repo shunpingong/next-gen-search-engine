@@ -325,14 +325,6 @@ The findings demonstrate the feasibility of TAG approaches and provide a foundat
 
 ---
 
-## Documentation
-
-- **Backend API**: See [backend/README.md](backend/README.md)
-- **TextGrad Endpoints**: See [backend/TEXTGRAD_ENDPOINTS.md](backend/TEXTGRAD_ENDPOINTS.md)
-- **Scrapers**: See [backend/scrapers/](backend/scrapers/)
-
----
-
 ## License
 
 This project is developed as part of academic research for educational purposes.
