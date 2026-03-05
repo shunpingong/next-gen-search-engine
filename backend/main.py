@@ -11,9 +11,14 @@ import numpy as np
 # Load environment variables from .env file
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure logging (avoid duplicate records via root/uvicorn propagation)
+logger = logging.getLogger("main")
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+    logger.addHandler(_handler)
+logger.setLevel(logging.INFO)
+logger.propagate = False
 
 # TextGrad imports
 try:
@@ -63,6 +68,36 @@ app.add_middleware(
 
 class TavilySearchRequest(BaseModel):
     query: str
+    max_results: Optional[int] = 10
+
+
+def _has_usable_answer(answer: Any) -> bool:
+    """Heuristic to decide if Tavily returned a useful direct answer."""
+    if not isinstance(answer, str):
+        return False
+    normalized = answer.strip().lower()
+    if not normalized:
+        return False
+    weak_answers = {
+        "i don't know",
+        "i do not know",
+        "not enough information",
+        "no answer found",
+        "unknown",
+    }
+    return normalized not in weak_answers
+
+
+def _build_retrieval_plan(requested_max: int) -> List[int]:
+    """
+    Build an increasing retrieval plan that minimizes result count first,
+    but can scale up to the requested maximum.
+    """
+    stages = [3, 5, 10]
+    plan = [stage for stage in stages if stage <= requested_max]
+    if not plan or plan[-1] != requested_max:
+        plan.append(requested_max)
+    return plan
 
 
 class PageRankRequest(BaseModel):
@@ -149,33 +184,69 @@ async def tavily_search(request: TavilySearchRequest):
         if not TAVILY_API_KEY:
             raise HTTPException(status_code=500, detail="TAVILY_API_KEY not configured")
         
-        # Make request to Tavily API
+        # Clamp max_results to Tavily limit requested by user requirements
+        requested_max_results = request.max_results if request.max_results is not None else 10
+        requested_max_results = max(1, min(requested_max_results, 10))
+        retrieval_plan = _build_retrieval_plan(requested_max_results)
+        logger.info(
+            f"Tavily retrieval plan: {retrieval_plan} (requested max={requested_max_results})"
+        )
+
+        # Make staged requests to Tavily API: retrieve minimally, expand only if needed
         async with aiohttp.ClientSession() as session:
             headers = {
                 "Accept": "application/json",
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {TAVILY_API_KEY}"
             }
-            
-            payload = {
-                "query": trimmed_query,
-                "search_depth": "advanced",
-                "max_results": 5,
-                "include_answer": True,
-                "include_raw_content": True
-            }
-            
-            async with session.post(TAVILY_ENDPOINT, json=payload, headers=headers) as response:
-                if not response.ok:
-                    error_text = await response.text()
-                    logger.error(f"Tavily API Error: {error_text}")
-                    raise HTTPException(status_code=response.status, detail=error_text)
-                
-                data = await response.json()
-                
-                logger.info("Tavily API Success")
-                logger.info(data)
-                return data
+
+            latest_data = None
+            for stage_max_results in retrieval_plan:
+                payload = {
+                    "query": trimmed_query,
+                    "search_depth": "advanced",
+                    "max_results": stage_max_results,
+                    "include_answer": True,
+                    "include_raw_content": True
+                }
+
+                async with session.post(TAVILY_ENDPOINT, json=payload, headers=headers) as response:
+                    if not response.ok:
+                        error_text = await response.text()
+                        logger.error(f"Tavily API Error: {error_text}")
+                        raise HTTPException(status_code=response.status, detail=error_text)
+
+                    data = await response.json()
+                    latest_data = data
+
+                results = data.get("results", [])
+                answer = data.get("answer")
+
+                logger.info(
+                    f"Tavily stage complete: max_results={stage_max_results}, "
+                    f"retrieved_results={len(results)}, has_answer={_has_usable_answer(answer)}"
+                )
+                for idx, result in enumerate(results, start=1):
+                    logger.info(
+                        "Tavily result stage=%s idx=%s title=%s url=%s score=%s",
+                        stage_max_results,
+                        idx,
+                        result.get("title", ""),
+                        result.get("url", ""),
+                        result.get("score", "n/a"),
+                    )
+
+                if _has_usable_answer(answer):
+                    logger.info(
+                        f"Stopping retrieval early at max_results={stage_max_results} "
+                        "because a usable answer was found."
+                    )
+                    return data
+
+            logger.info(
+                f"Reached max retrieval stage ({requested_max_results}). Returning latest results."
+            )
+            return latest_data
                 
     except HTTPException:
         raise
