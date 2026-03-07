@@ -29,22 +29,43 @@ except ImportError:
     logger.warning("TextGrad not available. Install with: pip install textgrad")
 
 # ============================================================================
-# OpenRouter API Configuration
+# OpenAI API Configuration
 # ============================================================================
-# Set OpenRouter API key from .env file
-os.environ["OPENROUTER_API_KEY"] = os.getenv("OPENROUTER_API_KEY")
+# Set OpenAI API key from .env file
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if OPENAI_API_KEY:
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+elif TEXTGRAD_AVAILABLE:
+    logger.warning("OPENAI_API_KEY not configured. TextGrad endpoints will fail until it is set.")
 
-# Configure the backward engine (used for generating feedback/gradients in TextGrad)
-# CHANGE MODEL HERE: Replace the model string to use different OpenRouter models
-# Format: "experimental:openrouter/<provider>/<model-name>"
-# Popular options:
-#   - "experimental:openrouter/openai/gpt-4o" (most capable)
-#   - "experimental:openrouter/openai/gpt-4-turbo"
-#   - "experimental:openrouter/anthropic/claude-3.5-sonnet"
-#   - "experimental:openrouter/google/gemini-pro-1.5"
-#   - "experimental:openrouter/meta-llama/llama-3.1-70b-instruct"
-# See all available models at: https://openrouter.ai/models
-tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
+BACKWARD_MODEL = os.getenv("TEXTGRAD_BACKWARD_MODEL", "gpt-4o")
+ADVANCED_MODEL_NAME = os.getenv("TEXTGRAD_ADVANCED_MODEL", "gpt-4o")
+FALLBACK_MODEL = "gpt-4o"
+ACTIVE_BACKWARD_MODEL = BACKWARD_MODEL
+ACTIVE_ADVANCED_MODEL_NAME = ADVANCED_MODEL_NAME
+
+
+def set_backward_engine_safe():
+    """Set backward engine and gracefully fallback if configured engine is unsupported."""
+    global ACTIVE_BACKWARD_MODEL
+    if not TEXTGRAD_AVAILABLE:
+        return
+    try:
+        tg.set_backward_engine(ACTIVE_BACKWARD_MODEL, override=True)
+    except Exception as e:
+        if ACTIVE_BACKWARD_MODEL != FALLBACK_MODEL:
+            logger.warning(
+                f"Backward engine '{ACTIVE_BACKWARD_MODEL}' unsupported ({e}). "
+                f"Falling back to '{FALLBACK_MODEL}'."
+            )
+            ACTIVE_BACKWARD_MODEL = FALLBACK_MODEL
+            tg.set_backward_engine(ACTIVE_BACKWARD_MODEL, override=True)
+        else:
+            raise
+
+
+if TEXTGRAD_AVAILABLE:
+    set_backward_engine_safe()
 
 app = FastAPI(
     title="NextGen Web Search API",
@@ -394,28 +415,52 @@ async def pagerank_endpoint(request: PageRankRequest):
 # ============================================================================
 
 # Global system prompt for advanced endpoints
-SYSTEM_PROMPT = tg.Variable(
-    "You are an AI search assistant specialized in query optimization and information retrieval. "
-    "Provide accurate, well-structured responses based on available context. "
-    "When refining queries or answers, preserve original intent while improving clarity and precision. "
-    "Think step-by-step and never add information not present in the given context.",
-    requires_grad=True,
-    role_description="System prompt to the language model"
-)
+if TEXTGRAD_AVAILABLE:
+    SYSTEM_PROMPT = tg.Variable(
+        "You are an AI search and reasoning assistant for a final-year project focused on retrieval quality. "
+        "Your objective is to maximize factual correctness, query intent preservation, and evidence grounding. "
+        "When refining queries, keep the exact user intent, preserve location/personal context, and avoid adding new constraints or invented details. "
+        "When refining answers, use only information explicitly present in the provided context and include all relevant facts needed for completeness. "
+        "Never hallucinate facts, sources, locations, dates, or numbers. "
+        "If context is missing or insufficient, state the limitation explicitly instead of guessing. "
+        "Prefer concise, structured outputs with clear reasoning and actionable content. "
+        "Write in a neutral, professional tone optimized for reliability over creativity. "
+        "Do not reveal chain-of-thought; provide brief justification only when it improves verifiability.",
+        requires_grad=True,
+        role_description="System prompt to the language model"
+    )
+    ADVANCED_OPTIMIZER = tg.TextualGradientDescent(parameters=[SYSTEM_PROMPT])
+else:
+    SYSTEM_PROMPT = None
+    ADVANCED_OPTIMIZER = None
 
-# CHANGE MODEL HERE: Set the OpenRouter model for advanced endpoints
 # This model is used for query/answer/plan refinement and prompt optimization
 ADVANCED_MODEL = None  # Will be initialized on first use
-ADVANCED_OPTIMIZER = tg.TextualGradientDescent(parameters=[SYSTEM_PROMPT])
 
 def get_advanced_model():
     """Lazy initialization of advanced model."""
-    global ADVANCED_MODEL
+    global ADVANCED_MODEL, ACTIVE_ADVANCED_MODEL_NAME
+    if not TEXTGRAD_AVAILABLE:
+        raise RuntimeError("TextGrad not available")
     if ADVANCED_MODEL is None:
-        ADVANCED_MODEL = tg.BlackboxLLM(
-            "experimental:openrouter/openai/gpt-3.5-turbo",
-            system_prompt=SYSTEM_PROMPT
-        )
+        try:
+            ADVANCED_MODEL = tg.BlackboxLLM(
+                ACTIVE_ADVANCED_MODEL_NAME,
+                system_prompt=SYSTEM_PROMPT
+            )
+        except Exception as e:
+            if ACTIVE_ADVANCED_MODEL_NAME != FALLBACK_MODEL:
+                logger.warning(
+                    f"Advanced model '{ACTIVE_ADVANCED_MODEL_NAME}' unsupported ({e}). "
+                    f"Falling back to '{FALLBACK_MODEL}'."
+                )
+                ACTIVE_ADVANCED_MODEL_NAME = FALLBACK_MODEL
+                ADVANCED_MODEL = tg.BlackboxLLM(
+                    ACTIVE_ADVANCED_MODEL_NAME,
+                    system_prompt=SYSTEM_PROMPT
+                )
+            else:
+                raise
     return ADVANCED_MODEL
 
     
@@ -441,7 +486,7 @@ async def refine_query(request: QueryRequest):
         logger.info(f"Query refinement request: '{request.query[:50]}...', iterations={request.max_iterations}")
         
         # CHANGE BACKWARD ENGINE HERE: Set model for query evaluation
-        tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
+        set_backward_engine_safe()
         
         model = get_advanced_model()
         original_query = request.query
@@ -544,7 +589,7 @@ async def refine_answer(request: AnswerRequest):
         logger.info(f"Answer refinement request: question='{request.question[:50]}...', iterations={request.max_iterations}")
         
         # CHANGE BACKWARD ENGINE HERE: Set model for answer evaluation
-        tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
+        set_backward_engine_safe()
         
         model = get_advanced_model()
         
@@ -664,7 +709,7 @@ async def refine_plan(request: PlanRequest):
         logger.info(f"Plan refinement request: query='{request.user_query[:50]}...', iterations={request.max_iterations}")
         
         # CHANGE BACKWARD ENGINE HERE: Set model for plan evaluation
-        tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
+        set_backward_engine_safe()
         
         model = get_advanced_model()
         
@@ -775,11 +820,11 @@ async def optimize_prompt(request: PromptOptimizeRequest):
         logger.info(f"Prompt optimization request: {len(request.eval_inputs)} inputs, iterations={request.max_iterations}")
         
         # CHANGE BACKWARD ENGINE HERE: Set model for prompt evaluation
-        tg.set_backward_engine("experimental:openrouter/openai/gpt-4o", override=True, cache=False)
+        set_backward_engine_safe()
         
         model = get_advanced_model()
         
-# Store original system prompt
+        # Store original system prompt
         original_prompt = SYSTEM_PROMPT.value
         
         # Optimization loop following paper pattern exactly
