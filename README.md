@@ -14,6 +14,7 @@ However, LLM-based search systems suffer from inherent hallucination issues and 
 
 - **Tool-Augmented LLM Search**: LLMs with tool-calling capabilities for intelligent information retrieval
 - **Web Search Integration**: Tavily API integration for real-time web search results
+- **Deep Research Browsing Agent**: Priority-scheduled multi-hop search, document fetching, HTML/PDF parsing, section detection, and grounded answer extraction
 - **PageRank Ranking**: Advanced document ranking using PageRank algorithm with query personalization
 - **TextGrad Optimization**: Iterative query, answer, and prompt refinement using LLM-as-judge methodology
 - **RESTful API Backend**: FastAPI service providing endpoints for integration with Nemobot web application
@@ -30,11 +31,19 @@ The system addresses three key challenges:
 
 ```
 backend/
-├── main.py                  # Main API server with all endpoints
-├── scrapers/                # Web scraping modules (DuckDuckGo, Google, Tavily, etc.)
-│   ├── base_scraper.py
-│   ├── tavily_scraper.py
-│   └── ...
+├── main.py                  # FastAPI server and public API entrypoints
+├── tavily_pipeline.py       # Backward-compatible façade for the deep research agent
+├── agent/                   # Research agent orchestration
+├── planner/                 # Query planning and decomposition
+├── search/                  # Search frontier scheduling and Tavily search
+├── retrieval/               # Concurrent document fetching
+├── parsing/                 # HTML / PDF parsers
+├── ranking/                 # Reranking and evidence selection
+├── extraction/              # Section finding and answer extraction
+├── memory/                  # Shared agent memory and evidence graph
+├── reflection/              # Reflection engine and query refinement
+├── utils/                   # Shared text helpers
+├── tests/                   # Backend tests
 ├── logs/                    # TextGrad optimization logs
 ├── decrypted_datasets/      # BrowseComp evaluation datasets
 └── pyproject.toml           # Python dependencies
@@ -50,17 +59,73 @@ All endpoints are hosted locally for development and testing.
 
 #### `POST /tavily`
 
-Web search using Tavily API with advanced search depth and raw content extraction.
+Deep research browsing pipeline for BrowseComp-style multi-hop questions.
+
+The pipeline is adaptive:
+
+1. The planner chooses a simple, decomposition, or multi-hop mode
+2. Search clues are scheduled on a priority frontier and executed concurrently
+3. Promising HTML/PDF documents are downloaded and parsed in parallel
+4. The agent detects key sections such as acknowledgements, builds an evidence graph, and extracts a grounded answer
+5. Reflection can reformulate queries automatically when evidence is weak or incomplete
 
 **Request:**
 
 ```json
 {
-  "query": "What is quantum computing?"
+  "query": "Find the last name of the person thanked in the acknowledgements of a film dissertation whose author later became a professor in the UK in 2018.",
+  "max_results": 5
 }
 ```
 
-**Response:** Returns Tavily search results including URLs, snippets, and full content.
+**Response:**
+
+```json
+{
+  "answer": "Gostick",
+  "evidence": "I am especially grateful to Peter Gostick for his help.",
+  "source": "https://repository.example.edu/thesis.pdf",
+  "reasoning_trace": [
+    "Planner generated 3 search clues for multi-hop exploration.",
+    "Iteration 1: searched 3 clues and queued 2 promising documents.",
+    "Iteration 1: parsed 2 documents (1 PDF, 1 HTML).",
+    "Iteration 1: located acknowledgements sections in 1 document(s).",
+    "Iteration 1: extracted answer candidate 'Gostick' from grounded evidence."
+  ],
+  "timing_stats": {
+    "planning_time": 0.03,
+    "search_time": 0.12,
+    "download_time": 0.08,
+    "parsing_time": 0.05,
+    "ranking_time": 0.01,
+    "extraction_time": 0.04,
+    "total_time": 0.33
+  },
+  "query": "Find the last name of the person thanked in the acknowledgements of a film dissertation whose author later became a professor in the UK in 2018.",
+  "clues": [
+    "film dissertation acknowledgements pdf repository",
+    "author professor UK 2018 film studies",
+    "visual storytelling department university dissertation repository"
+  ],
+  "sources": [
+    {
+      "title": "What Is Quantum Computing?",
+      "url": "https://example.com/quantum",
+      "snippet": "Quantum computing uses qubits that can represent multiple states...",
+      "score": 0.91
+    }
+  ],
+  "context": "CONTEXT SOURCES:\n\n[Source 1]\nTitle: ...",
+  "stats": {
+    "retrieved_documents": 12,
+    "deduplicated_documents": 8,
+    "reranker": "cross-encoder",
+    "pipeline_mode": "multi-hop",
+    "decomposition_used": true,
+    "follow_up_used": true
+  }
+}
+```
 
 ---
 

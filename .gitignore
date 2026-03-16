@@ -1,17 +1,18 @@
 .venv
 __pycache__
 node_modules
+*.pyc
 
 # Environment variables
 .env
 .env.local
 
 # Scraper output
-# output/
-# *.json
+backend/scrapers/output/
 
 # Selenium
 chromedriver
 geckodriver
 
 logs/
+backend/logs/

@@ -1,12 +1,19 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import logging
 import os
-import aiohttp
 from dotenv import load_dotenv
 import numpy as np
+
+from config.app_config import load_application_config
+from tavily_pipeline import (
+    SearchProviderError,
+    TavilyPipelineError,
+    TavilySearchError,
+    run_tavily_pipeline,
+)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -20,6 +27,8 @@ if not logger.handlers:
 logger.setLevel(logging.INFO)
 logger.propagate = False
 
+APP_CONFIG = load_application_config()
+
 # TextGrad imports
 try:
     import textgrad as tg
@@ -32,15 +41,15 @@ except ImportError:
 # OpenAI API Configuration
 # ============================================================================
 # Set OpenAI API key from .env file
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = APP_CONFIG.openai_api_key
 if OPENAI_API_KEY:
     os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 elif TEXTGRAD_AVAILABLE:
     logger.warning("OPENAI_API_KEY not configured. TextGrad endpoints will fail until it is set.")
 
-BACKWARD_MODEL = os.getenv("TEXTGRAD_BACKWARD_MODEL", "gpt-4o")
-ADVANCED_MODEL_NAME = os.getenv("TEXTGRAD_ADVANCED_MODEL", "gpt-4o")
-FALLBACK_MODEL = "gpt-4o"
+BACKWARD_MODEL = APP_CONFIG.textgrad_backward_model
+ADVANCED_MODEL_NAME = APP_CONFIG.textgrad_advanced_model
+FALLBACK_MODEL = APP_CONFIG.textgrad_fallback_model
 ACTIVE_BACKWARD_MODEL = BACKWARD_MODEL
 ACTIVE_ADVANCED_MODEL_NAME = ADVANCED_MODEL_NAME
 
@@ -70,7 +79,7 @@ if TEXTGRAD_AVAILABLE:
 app = FastAPI(
     title="NextGen Web Search API",
     description="Advanced web search engine with PageRank-based result ranking and Tavily integration",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 # CORS middleware
@@ -90,35 +99,6 @@ app.add_middleware(
 class TavilySearchRequest(BaseModel):
     query: str
     max_results: Optional[int] = 10
-
-
-def _has_usable_answer(answer: Any) -> bool:
-    """Heuristic to decide if Tavily returned a useful direct answer."""
-    if not isinstance(answer, str):
-        return False
-    normalized = answer.strip().lower()
-    if not normalized:
-        return False
-    weak_answers = {
-        "i don't know",
-        "i do not know",
-        "not enough information",
-        "no answer found",
-        "unknown",
-    }
-    return normalized not in weak_answers
-
-
-def _build_retrieval_plan(requested_max: int) -> List[int]:
-    """
-    Build an increasing retrieval plan that minimizes result count first,
-    but can scale up to the requested maximum.
-    """
-    stages = [3, 5, 10]
-    plan = [stage for stage in stages if stage <= requested_max]
-    if not plan or plan[-1] != requested_max:
-        plan.append(requested_max)
-    return plan
 
 
 class PageRankRequest(BaseModel):
@@ -162,7 +142,7 @@ class PromptOptimizeRequest(BaseModel):
 def read_root():
     return {
         "message": "NextGen Web Search API with TextGrad Optimization",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "endpoints": [
             "POST /tavily",
             "POST /pagerank",
@@ -186,89 +166,45 @@ def health_check():
 @app.post("/tavily")
 async def tavily_search(request: TavilySearchRequest):
     """
-    Tavily search endpoint - proxy for Tavily API.
-    Converts query to Tavily API format and returns results.
+    Deep research browsing endpoint.
+
+    Keeps the existing `/tavily` entrypoint, but routes the request through the
+    production-style multi-hop research agent so the response includes a grounded
+    answer, evidence, reasoning trace, and timing breakdown.
     """
     try:
-        query = request.query
-        
-        logger.info(f"Received query: {query}")
-        
-        # Trim query if too long
-        MAX_QUERY_LENGTH = 400
-        trimmed_query = query[:MAX_QUERY_LENGTH] if len(query) > MAX_QUERY_LENGTH else query
-        
-        # Get Tavily API credentials from environment
-        TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-        TAVILY_ENDPOINT = os.getenv("TAVILY_ENDPOINT", "https://api.tavily.com/search")
-        
-        if not TAVILY_API_KEY:
-            raise HTTPException(status_code=500, detail="TAVILY_API_KEY not configured")
-        
-        # Clamp max_results to Tavily limit requested by user requirements
-        requested_max_results = request.max_results if request.max_results is not None else 10
+        requested_max_results = request.max_results if request.max_results is not None else 5
         requested_max_results = max(1, min(requested_max_results, 10))
-        retrieval_plan = _build_retrieval_plan(requested_max_results)
+
         logger.info(
-            f"Tavily retrieval plan: {retrieval_plan} (requested max={requested_max_results})"
+            "Received Tavily pipeline query: '%s' (top sources=%s)",
+            request.query,
+            requested_max_results,
         )
 
-        # Make staged requests to Tavily API: retrieve minimally, expand only if needed
-        async with aiohttp.ClientSession() as session:
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {TAVILY_API_KEY}"
-            }
+        pipeline_result = await run_tavily_pipeline(
+            request.query,
+            max_sources=requested_max_results,
+        )
 
-            latest_data = None
-            for stage_max_results in retrieval_plan:
-                payload = {
-                    "query": trimmed_query,
-                    "search_depth": "advanced",
-                    "max_results": stage_max_results,
-                    "include_answer": True,
-                    "include_raw_content": True
-                }
-
-                async with session.post(TAVILY_ENDPOINT, json=payload, headers=headers) as response:
-                    if not response.ok:
-                        error_text = await response.text()
-                        logger.error(f"Tavily API Error: {error_text}")
-                        raise HTTPException(status_code=response.status, detail=error_text)
-
-                    data = await response.json()
-                    latest_data = data
-
-                results = data.get("results", [])
-                answer = data.get("answer")
-
-                logger.info(
-                    f"Tavily stage complete: max_results={stage_max_results}, "
-                    f"retrieved_results={len(results)}, has_answer={_has_usable_answer(answer)}"
-                )
-                for idx, result in enumerate(results, start=1):
-                    logger.info(
-                        "Tavily result stage=%s idx=%s title=%s url=%s score=%s",
-                        stage_max_results,
-                        idx,
-                        result.get("title", ""),
-                        result.get("url", ""),
-                        result.get("score", "n/a"),
-                    )
-
-                if _has_usable_answer(answer):
-                    logger.info(
-                        f"Stopping retrieval early at max_results={stage_max_results} "
-                        "because a usable answer was found."
-                    )
-                    return data
-
-            logger.info(
-                f"Reached max retrieval stage ({requested_max_results}). Returning latest results."
-            )
-            return latest_data
-                
+        logger.info(
+            "Tavily pipeline complete: mode=%s clues=%s retrieved=%s deduplicated=%s returned=%s reranker=%s follow_up=%s answer_found=%s",
+            pipeline_result.pipeline_mode,
+            len(pipeline_result.clues),
+            pipeline_result.retrieved_documents,
+            pipeline_result.deduplicated_documents,
+            len(pipeline_result.sources),
+            pipeline_result.reranker,
+            pipeline_result.follow_up_used,
+            bool(pipeline_result.answer),
+        )
+        return pipeline_result.to_response()
+    except (TavilySearchError, SearchProviderError) as error:
+        logger.error("Search provider error: %s", error.detail)
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+    except TavilyPipelineError as error:
+        logger.error("Tavily pipeline error: %s", str(error))
+        raise HTTPException(status_code=500, detail=str(error))
     except HTTPException:
         raise
     except Exception as error:

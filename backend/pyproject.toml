@@ -9,17 +9,28 @@ dependencies = [
     "fastapi>=0.117.1",
     "uvicorn>=0.37.0",
     "pydantic>=2.0.0",
+    "openai>=2.0.0",
     # HTTP client for async API calls
-    "aiohttp>=3.9.0",
     "httpx>=0.25.0",
+    "duckduckgo-search>=7.3.0",
+    "selenium>=4.25.0",
     # Graph analysis
     "networkx>=3.2.0",
     "numpy>=1.24.0",
     "scipy>=1.10.0",
+    # HTML / PDF parsing for the deep research agent
+    "beautifulsoup4>=4.12.0",
+    "trafilatura>=1.12.0",
+    "pymupdf>=1.26.0",
+    "pdfminer.six>=20240706",
+    # Semantic reranking for the Tavily TAG pipeline
+    "sentence-transformers>=3.0.0",
     # Environment and configuration
     "python-dotenv>=1.0.0",
     # TextGrad for automatic differentiation via text
     "textgrad>=0.1.0",
+    "matplotlib>=3.10.8",
+    "openpyxl>=3.1.0",
 ]
 
 [project.optional-dependencies]
