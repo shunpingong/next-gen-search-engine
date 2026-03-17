@@ -178,7 +178,7 @@ async def tavily_search(request: TavilySearchRequest):
     """
     try:
         requested_max_results = request.max_results if request.max_results is not None else 5
-        requested_max_results = max(1, min(requested_max_results, 10))
+        requested_max_results = max(1, min(requested_max_results, 5))
 
         logger.info(
             "Received Tavily pipeline query: '%s' (top sources=%s)",
