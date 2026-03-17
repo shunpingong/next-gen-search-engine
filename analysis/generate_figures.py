@@ -448,7 +448,7 @@ def create_figure_1(metrics: MetricsBundle, output_dir: Path) -> None:
         style_axes(ax, grid_axis="y")
         add_vertical_labels(ax, bars, values, y_offset=label_offset, fmt=label_fmt)
 
-    fig.suptitle("Overall Performance Comparison by Configuration", fontsize=14, fontweight="bold", y=1.03)
+    # fig.suptitle("Overall Performance Comparison by Configuration", fontsize=14, fontweight="bold", y=1.03)
     fig.legend(
         handles=legend_handles(),
         ncol=3,
@@ -493,7 +493,7 @@ def create_figure_2(metrics: MetricsBundle, output_dir: Path) -> None:
         bars_by_config[config] = bars
         add_vertical_labels(ax, bars, values, y_offset=0.018, fmt="{:.2f}")
 
-    ax.set_title("Factual Accuracy by Query Type and Configuration", pad=14)
+    # ax.set_title("Factual Accuracy by Query Type and Configuration", pad=14)
     ax.set_ylabel("Factual Accuracy")
     ax.set_xticks(group_centers)
     ax.set_xticklabels(["Dynamic Queries", "Static Queries"])
@@ -557,7 +557,7 @@ def create_figure_3(metrics: MetricsBundle, output_dir: Path) -> None:
         zorder=3,
     )
 
-    ax.set_title("Error Rate (%) by Model and Configuration", pad=14)
+    # ax.set_title("Error Rate (%) by Model and Configuration", pad=14)
     ax.set_xlabel("Error Rate (%)")
     ax.set_ylabel("Model")
     ax.set_yticks(centers)
@@ -600,7 +600,7 @@ def create_figure_4(metrics: MetricsBundle, output_dir: Path) -> None:
         zorder=3,
     )
 
-    ax.set_title("Latency Comparison Across Configurations and Retrieval Conditions", pad=14)
+    # ax.set_title("Latency Comparison Across Configurations and Retrieval Conditions", pad=14)
     ax.set_xlabel("Mean Latency (seconds)")
     ax.set_ylabel("Condition")
     ax.set_yticks(positions)
@@ -639,7 +639,7 @@ def create_figure_5(metrics: MetricsBundle, output_dir: Path) -> None:
         )
         add_vertical_labels(ax, bars, values, y_offset=0.018, fmt="{:.2f}")
 
-    ax.set_title("Dynamic Query Accuracy by Model and Configuration", pad=14)
+    # ax.set_title("Dynamic Query Accuracy by Model and Configuration", pad=14)
     ax.set_ylabel("Dynamic Accuracy")
     ax.set_xticks(x_positions)
     ax.set_xticklabels([MODEL_LABELS[model] for model in models])
@@ -712,7 +712,7 @@ def create_figure_6(metrics: MetricsBundle, output_dir: Path) -> None:
     style_axes(dynamic_ax, grid_axis="y")
     add_vertical_labels(dynamic_ax, dynamic_bars, dynamic_values, y_offset=0.02, fmt="{:.2f}")
 
-    fig.suptitle("TAG Tool Behaviour", fontsize=14, fontweight="bold", y=1.02)
+    # fig.suptitle("TAG Tool Behaviour", fontsize=14, fontweight="bold", y=1.02)
     save_figure(fig, output_dir / "fig6_tag_tool_behaviour.png", layout_rect=(0.0, 0.0, 1.0, 0.97))
 
 
@@ -746,7 +746,8 @@ def create_figure_7(metrics: MetricsBundle, output_dir: Path) -> None:
     compare_ax.set_ylabel("Share / Accuracy")
     compare_ax.set_xticks(group_centers)
     compare_ax.set_xticklabels(compare_groups)
-    compare_ax.set_ylim(0, 0.82)
+    compare_max = max(float(series.max()) for series in compare_series)
+    compare_ax.set_ylim(0, max(0.82, compare_max + 0.08))
     compare_ax.yaxis.set_major_locator(MultipleLocator(0.1))
     style_axes(compare_ax, grid_axis="y")
     compare_ax.legend(
@@ -780,7 +781,7 @@ def create_figure_7(metrics: MetricsBundle, output_dir: Path) -> None:
     style_axes(refine_ax, grid_axis="y")
     add_vertical_labels(refine_ax, refine_bars, refinement_values, y_offset=0.015, fmt="{:.2f}")
 
-    fig.suptitle("Retrieval Quality and Query Refinement", fontsize=14, fontweight="bold", y=1.02)
+    # fig.suptitle("Retrieval Quality and Query Refinement", fontsize=14, fontweight="bold", y=1.02)
     save_figure(fig, output_dir / "fig7_retrieval_quality.png", layout_rect=(0.0, 0.03, 1.0, 0.97))
 
 
