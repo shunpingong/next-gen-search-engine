@@ -1,11 +1,14 @@
+import json
+import logging
+import os
+from difflib import SequenceMatcher
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
-import logging
-import os
-from dotenv import load_dotenv
-import numpy as np
 
 from config.app_config import load_application_config
 from tavily_pipeline import (
@@ -14,6 +17,7 @@ from tavily_pipeline import (
     TavilySearchError,
     run_tavily_pipeline,
 )
+from utils.text_utils import lexical_relevance_score, normalize_whitespace, specificity_overlap_score
 
 # Load environment variables from .env file
 load_dotenv()
@@ -103,7 +107,7 @@ class TavilySearchRequest(BaseModel):
 
 class PageRankRequest(BaseModel):
     documents: List[Dict[str, Any]]
-    query: Optional[str] = None  # Optional: query for personalizing PageRank
+    query: Optional[Any] = None  # Supports plain strings and {"refined_query": "..."} payloads
     top_k: Optional[int] = None  # Optional: return only top-k results
 
 
@@ -198,7 +202,11 @@ async def tavily_search(request: TavilySearchRequest):
             pipeline_result.follow_up_used,
             bool(pipeline_result.answer),
         )
-        return pipeline_result.to_response()
+
+        results = pipeline_result.to_response()
+        logger.info("Tavily pipeline response: %s", results)
+        return results
+    
     except (TavilySearchError, SearchProviderError) as error:
         logger.error("Search provider error: %s", error.detail)
         raise HTTPException(status_code=error.status_code, detail=error.detail)
@@ -216,21 +224,159 @@ async def tavily_search(request: TavilySearchRequest):
 # Utility Functions
 # ============================================================================
 
+PAGERANK_MAX_TEXT_CHARS = 6000
+PAGERANK_GRAPH_TEXT_CHARS = 2500
+PAGERANK_MAX_ITERATIONS = 50
+PAGERANK_TOLERANCE = 1e-6
+
+
+def _extract_query_text(query: Any) -> Optional[str]:
+    """Extract a usable query string from raw input or TextGrad-style payloads."""
+    if query is None:
+        return None
+
+    if isinstance(query, dict):
+        for key in ("refined_query", "query", "original_query", "text"):
+            value = query.get(key)
+            if isinstance(value, str):
+                normalized = normalize_whitespace(value)
+                if normalized:
+                    return normalized
+
+        for value in query.values():
+            if isinstance(value, str):
+                normalized = normalize_whitespace(value)
+                if normalized:
+                    return normalized
+        return None
+
+    if isinstance(query, list):
+        query_parts = []
+        for value in query:
+            normalized = _extract_query_text(value)
+            if normalized:
+                query_parts.append(normalized)
+        combined_query = normalize_whitespace(" ".join(query_parts))
+        return combined_query or None
+
+    if isinstance(query, str):
+        normalized_query = normalize_whitespace(query)
+        if not normalized_query:
+            return None
+
+        if normalized_query.startswith("{") or normalized_query.startswith("["):
+            try:
+                parsed_query = json.loads(normalized_query)
+            except json.JSONDecodeError:
+                return normalized_query
+            extracted_query = _extract_query_text(parsed_query)
+            return extracted_query or normalized_query
+
+        return normalized_query
+
+    normalized_query = normalize_whitespace(str(query))
+    return normalized_query or None
+
+
+def _document_title(document: Dict[str, Any]) -> str:
+    title = document.get("title", "")
+    return normalize_whitespace(title) if isinstance(title, str) else ""
+
+
+def _document_content(document: Dict[str, Any], *, max_chars: int) -> str:
+    for key in ("content", "raw_content", "snippet", "description", "summary"):
+        value = document.get(key, "")
+        if isinstance(value, str):
+            normalized = normalize_whitespace(value)
+            if normalized:
+                return normalized[:max_chars]
+    return ""
+
+
+def _compose_pagerank_text(document: Dict[str, Any], *, max_chars: int) -> str:
+    title = _document_title(document)
+    content = _document_content(document, max_chars=max_chars)
+    return normalize_whitespace(" ".join(part for part in (title, content) if part))
+
+
+def _document_prior_score(document: Dict[str, Any]) -> float:
+    for key in ("score", "retrieval_score", "rank_score"):
+        value = document.get(key)
+        if isinstance(value, (int, float)):
+            return max(0.0, float(value))
+    return 0.0
+
+
+def _normalize_distribution(values: np.ndarray, *, fallback: Optional[np.ndarray] = None) -> np.ndarray:
+    clipped_values = np.clip(np.asarray(values, dtype=float), a_min=0.0, a_max=None)
+    total = clipped_values.sum()
+    if total > 0:
+        return clipped_values / total
+
+    if fallback is not None:
+        clipped_fallback = np.clip(np.asarray(fallback, dtype=float), a_min=0.0, a_max=None)
+        fallback_total = clipped_fallback.sum()
+        if fallback_total > 0:
+            return clipped_fallback / fallback_total
+
+    if clipped_values.size == 0:
+        return clipped_values
+
+    return np.ones(clipped_values.size, dtype=float) / clipped_values.size
+
+
+def _scale_scores(values: np.ndarray) -> np.ndarray:
+    numeric_values = np.asarray(values, dtype=float)
+    if numeric_values.size == 0:
+        return numeric_values
+
+    minimum = float(numeric_values.min())
+    maximum = float(numeric_values.max())
+    spread = maximum - minimum
+    if spread <= 1e-12:
+        return np.ones_like(numeric_values) if maximum > 0 else np.zeros_like(numeric_values)
+    return (numeric_values - minimum) / spread
+
+
 def compute_text_similarity(text1: str, text2: str) -> float:
     """
-    Compute simple similarity score between two texts.
-    Uses word overlap as a basic similarity metric.
+    Compute a robust symmetric similarity score between two texts.
+    Blends lexical overlap, specificity overlap, and surface similarity.
     """
-    words1 = set(text1.lower().split())
-    words2 = set(text2.lower().split())
-    
-    if not words1 or not words2:
+    normalized_text1 = normalize_whitespace(text1)
+    normalized_text2 = normalize_whitespace(text2)
+
+    if not normalized_text1 or not normalized_text2:
         return 0.0
-    
-    intersection = words1.intersection(words2)
-    union = words1.union(words2)
-    
-    return len(intersection) / len(union) if union else 0.0
+
+    lexical_score = (
+        lexical_relevance_score(normalized_text1, normalized_text2)
+        + lexical_relevance_score(normalized_text2, normalized_text1)
+    ) / 2.0
+    specificity_score = (
+        specificity_overlap_score(normalized_text1, normalized_text2)
+        + specificity_overlap_score(normalized_text2, normalized_text1)
+    ) / 2.0
+    sequence_score = SequenceMatcher(
+        None,
+        normalized_text1[:1200].lower(),
+        normalized_text2[:1200].lower(),
+    ).ratio()
+
+    return float(min(1.0, (0.4 * lexical_score) + (0.3 * specificity_score) + (0.3 * sequence_score)))
+
+
+def _compute_query_relevance_score(query: str, document: Dict[str, Any]) -> float:
+    document_text = _compose_pagerank_text(document, max_chars=PAGERANK_MAX_TEXT_CHARS)
+    if not document_text:
+        return 0.0
+
+    title_text = _document_title(document)
+    lexical_score = lexical_relevance_score(query, document_text)
+    specificity_score = specificity_overlap_score(query, document_text)
+    title_score = lexical_relevance_score(query, title_text) if title_text else 0.0
+
+    return float(min(1.0, (0.55 * lexical_score) + (0.30 * specificity_score) + (0.15 * title_score)))
 
 
 # ============================================================================
@@ -260,85 +406,113 @@ async def pagerank_endpoint(request: PageRankRequest):
     """
     try:
         documents = request.documents
-        query = request.query
+        query = _extract_query_text(request.query)
         top_k = request.top_k
         
         logger.info(f"PageRank computation for {len(documents)} documents" + 
                    (f" with query: {query}" if query else ""))
         
         if not documents:
-            return {"scores": {}, "ranked_documents": []}
+            return {
+                "scores": {},
+                "pagerank_scores": {},
+                "relevance_scores": {},
+                "ranked_documents": [] if top_k is not None else None,
+                "total_documents": 0,
+                "iterations": 0,
+                "effective_query": query,
+                "personalized_by_query": bool(query),
+            }
         
         n = len(documents)
         
         # Extract document IDs
         doc_ids = [doc.get("id", f"doc-{i}") for i, doc in enumerate(documents)]
+        graph_texts = [_compose_pagerank_text(doc, max_chars=PAGERANK_GRAPH_TEXT_CHARS) for doc in documents]
+        prior_scores = np.array([_document_prior_score(doc) for doc in documents], dtype=float)
         
-        # Create relevance scores
-        relevance_scores = []
+        # Create relevance scores against the effective query or any existing retrieval scores
+        raw_relevance_scores: list[float] = []
         if query:
-            # If query provided, score based on query similarity
             for doc in documents:
-                text = f"{doc.get('title', '')} {doc.get('content', '')}"
-                similarity = compute_text_similarity(query, text)
-                relevance_scores.append(similarity)
+                raw_relevance_scores.append(_compute_query_relevance_score(query, doc))
         else:
-            # Otherwise use document scores field
             for doc in documents:
-                score = doc.get("score", 0.5)
-                if isinstance(score, (int, float)):
-                    relevance_scores.append(float(score))
-                else:
-                    relevance_scores.append(0.5)
-        
+                raw_relevance_scores.append(_document_prior_score(doc))
+
         # Build adjacency matrix based on content similarity between documents
-        adjacency = np.zeros((n, n))
-        for i in range(n):
-            for j in range(n):
-                if i != j:
-                    text_i = f"{documents[i].get('title', '')} {documents[i].get('content', '')}"
-                    text_j = f"{documents[j].get('title', '')} {documents[j].get('content', '')}"
-                    similarity = compute_text_similarity(text_i, text_j)
-                    adjacency[i][j] = similarity
-        
-        # Normalize adjacency matrix (column stochastic)
+        adjacency = np.zeros((n, n), dtype=float)
+        for source_index in range(n):
+            for target_index in range(n):
+                if source_index == target_index:
+                    continue
+                similarity = compute_text_similarity(
+                    graph_texts[target_index],
+                    graph_texts[source_index],
+                )
+                adjacency[target_index][source_index] = similarity
+
         col_sums = adjacency.sum(axis=0)
-        col_sums[col_sums == 0] = 1  # Avoid division by zero
+        dangling_columns = col_sums == 0
+        if np.any(dangling_columns):
+            adjacency[:, dangling_columns] = 1.0 / n
+            col_sums = adjacency.sum(axis=0)
         adjacency = adjacency / col_sums
         
-        # PageRank algorithm with personalization
+        # PageRank algorithm with personalization from query relevance / prior scores
         damping = 0.85
-        pagerank = np.ones(n) / n
-        relevance_array = np.array(relevance_scores)
-        relevance_array = relevance_array / (relevance_array.sum() + 1e-8)  # Normalize with epsilon
+        pagerank = np.ones(n, dtype=float) / n
+        relevance_array = np.array(raw_relevance_scores, dtype=float)
+        teleport_vector = _normalize_distribution(relevance_array, fallback=prior_scores)
+        iterations_run = 0
         
         # Iterate PageRank
-        for _ in range(20):  # 20 iterations
-            new_pagerank = (1 - damping) * relevance_array + damping * adjacency.dot(pagerank)
-            if np.allclose(new_pagerank, pagerank):
+        for iteration in range(1, PAGERANK_MAX_ITERATIONS + 1):
+            new_pagerank = (1 - damping) * teleport_vector + damping * adjacency.dot(pagerank)
+            new_pagerank = _normalize_distribution(new_pagerank, fallback=teleport_vector)
+            iterations_run = iteration
+            if np.linalg.norm(new_pagerank - pagerank, ord=1) < PAGERANK_TOLERANCE:
+                pagerank = new_pagerank
                 break
             pagerank = new_pagerank
+
+        if query:
+            graph_boost = _scale_scores(pagerank)
+            final_scores_array = np.clip(relevance_array * (0.75 + (0.25 * graph_boost)), 0.0, 1.0)
+        else:
+            final_scores_array = pagerank
         
-        # Create scores dictionary indexed by document ID
-        scores = {doc_ids[i]: float(pagerank[i]) for i in range(n)}
+        # Create score dictionaries indexed by document ID
+        scores = {doc_ids[i]: float(final_scores_array[i]) for i in range(n)}
+        pagerank_scores = {doc_ids[i]: float(pagerank[i]) for i in range(n)}
+        relevance_scores = {doc_ids[i]: float(relevance_array[i]) for i in range(n)}
         
-        # If top_k is specified, also return ranked documents
         ranked_documents = []
         if top_k is not None:
-            ranked_indices = np.argsort(pagerank)[::-1][:top_k]
+            ranked_indices = np.argsort(final_scores_array)[::-1][:top_k]
             for idx in ranked_indices:
                 doc = documents[int(idx)].copy()
                 doc['pagerank_score'] = float(pagerank[idx])
+                doc['query_relevance_score'] = float(relevance_array[idx])
+                doc['final_score'] = float(final_scores_array[idx])
                 ranked_documents.append(doc)
         
-        logger.info(f"PageRank computation complete. Top score: {max(pagerank):.4f}")
+        logger.info(
+            "PageRank computation complete. Top final score: %.4f, top relevance: %.4f, top PageRank: %.4f",
+            float(np.max(final_scores_array)),
+            float(np.max(relevance_array)),
+            float(np.max(pagerank)),
+        )
         
         return {
             "scores": scores,
-            "ranked_documents": ranked_documents if top_k else None,
+            "pagerank_scores": pagerank_scores,
+            "relevance_scores": relevance_scores,
+            "ranked_documents": ranked_documents if top_k is not None else None,
             "total_documents": n,
-            "iterations": 20,
-            "personalized_by_query": query is not None
+            "iterations": iterations_run,
+            "effective_query": query,
+            "personalized_by_query": bool(query),
         }
         
     except Exception as e:
