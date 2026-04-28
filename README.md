@@ -1,96 +1,120 @@
-# Tool-Augmented Generative Search Engine
+# Next-Gen Search Engine
 
-Backend and analysis code for a Final Year Project comparing `LLM-only`, `RAG`, and `TAG` search pipelines.
+This project contains a FastAPI search backend and a frontend function package for building chatbot search flows. The backend exposes live search, ranking, and TextGrad refinement endpoints. The frontend folder contains the function definitions and playground response handlers that call those backend endpoints from a chatbot platform.
 
-The backend exposes a FastAPI service for:
+## Repository Structure
 
-- deep web research with retrieval, reranking, extraction, and reflection
-- PageRank-style reranking for document sets
-- optional TextGrad-based query, answer, plan, and prompt refinement
-
-The `analysis/` folder contains the workbook, scripts, and generated figures used for evaluation.
-
-## Repository Layout
-
-- `backend/` FastAPI backend and TAG pipeline
-- `backend/main.py` API entrypoint
-- `backend/tests/` backend tests
-- `analysis/generate_figures.py` figure generation script
-- `analysis/fyp_analysis.py` exploratory analysis script
-- `analysis/FYP Results.xlsx` evaluation workbook used by the analysis scripts
-
-## Requirements
-
-- Python 3.10+
-- `TAVILY_API_KEY` for web search
-- `OPENAI_API_KEY` for the default `/tavily` decomposition and follow-up flow, and for all `/textgrad/*` endpoints
-
-Optional provider keys:
-
-- `SERPER_API_KEY`
-- `SERPAPI_API_KEY`
-- `GOOGLE_API_KEY`
-- `GOOGLE_SEARCH_ENGINE_ID`
-
-If you want to run the retrieval pipeline without OpenAI-backed decomposition and follow-up, set:
-
-```env
-TAVILY_USE_LLM_DECOMPOSITION=0
-TAVILY_USE_LLM_FOLLOW_UP=0
+```text
+.
+|-- backend/
+|   |-- main.py
+|   |-- pyproject.toml
+|   |-- .env.template
+|   |-- agent/
+|   |-- config/
+|   |-- extraction/
+|   |-- memory/
+|   |-- parsing/
+|   |-- planner/
+|   |-- ranking/
+|   |-- reflection/
+|   |-- retrieval/
+|   |-- scrapers/
+|   |-- search/
+|   |-- tests/
+|   `-- utils/
+`-- frontend/
+    |-- functions/
+    |   |-- refineSearchQuery/
+    |   |-- webSearchBasic/
+    |   `-- webSearchDetailed/
+    `-- playground/
+        |-- LLM/
+        |-- LLMRag/
+        `-- LLMTag/
 ```
 
-## Setup
+## Backend
 
-```bash
+The backend is a Python FastAPI service. It provides the local API used by the search functions in `frontend/functions/` and the RAG playground in `frontend/playground/LLMRag/`.
+
+Start with the backend README for setup, environment variables, API routes, and request examples:
+
+```text
+backend/README.md
+```
+
+Main local endpoints:
+
+- `GET /health` returns the backend health status.
+- `POST /tavily` runs the live search pipeline.
+- `POST /pagerank` ranks provided documents with PageRank and query relevance.
+- `POST /textgrad/refine-query` improves a search query over refinement rounds.
+- `POST /textgrad/refine-answer` improves an answer using supplied context.
+- `POST /textgrad/refine-plan` improves a tool or execution plan.
+- `POST /textgrad/optimize-prompt` optimizes a TextGrad system prompt from evaluation inputs.
+
+## Frontend Function Package
+
+The frontend folder is not a standalone web application. It is a structured package of chatbot platform functions, setup notes, and playground handlers.
+
+Start with the frontend README for folder purpose, setup order, function dependencies, and runtime assumptions:
+
+```text
+frontend/README.md
+```
+
+The frontend package includes three reusable functions:
+
+- `frontend/functions/refineSearchQuery/` normalizes a raw query and returns a structured search query.
+- `frontend/functions/webSearchBasic/` performs live search and returns a concise summary.
+- `frontend/functions/webSearchDetailed/` performs live search, optional query refinement, PageRank ranking, and detailed synthesis.
+
+It also includes three playground configurations:
+
+- `frontend/playground/LLM/` streams a direct chat response.
+- `frontend/playground/LLMRag/` retrieves context from the local backend before streaming the chat response.
+- `frontend/playground/LLMTag/` exposes the basic and detailed web search functions as tools.
+
+## Quick Start
+
+Install and run the backend first:
+
+```powershell
 cd backend
 pip install -e .
-```
-
-If you plan to run the analysis scripts, make sure your environment also has `pandas` and `seaborn` available.
-
-Create a `.env` file in the project root or `backend/` with the keys you need, for example:
-
-```env
-TAVILY_API_KEY=your_tavily_key
-OPENAI_API_KEY=your_openai_key
-```
-
-## Run the API
-
-```bash
-cd backend
+copy .env.template .env
 python main.py
 ```
 
-The API starts on `http://localhost:8000`. FastAPI docs are available at `http://localhost:8000/docs`.
+The API starts on:
 
-## Main Endpoints
-
-- `POST /tavily` runs the research pipeline and returns an answer, evidence, sources, reasoning trace, and timing stats
-- `POST /pagerank` reranks a list of documents using query-aware graph scoring
-- `POST /textgrad/refine-query` refines search queries
-- `POST /textgrad/refine-answer` improves answer drafts against provided context
-- `POST /textgrad/refine-plan` revises multi-step plans using execution feedback
-- `POST /textgrad/optimize-prompt` performs offline prompt optimization
-
-## Testing
-
-```bash
-cd backend
-pytest
+```text
+http://localhost:8000
 ```
 
-## Analysis
+Open the interactive API docs at:
 
-Regenerate the report figures with:
-
-```bash
-python analysis/generate_figures.py
+```text
+http://localhost:8000/docs
 ```
 
-Generated figures are written to `analysis/*.png`.
+After the backend is running, use the setup files inside `frontend/functions/` and `frontend/playground/` to recreate the required functions and chat dependencies in the target chatbot platform.
 
-## Notes
+## Runtime Dependencies Between Folders
 
-- This backend was built to integrate with a separate frontend application.
-- The repository is primarily an academic project rather than a production deployment.
+The frontend function code expects the backend to be available at `http://localhost:8000`.
+
+The main runtime dependencies are:
+
+- `frontend/playground/LLMRag/generateResponse.js` calls `POST /tavily`.
+- `frontend/functions/webSearchBasic/preprocess.js` calls `POST /tavily` and can call `POST /textgrad/refine-query`.
+- `frontend/functions/webSearchDetailed/preprocess.js` calls `POST /tavily`, `POST /pagerank`, and can call `POST /textgrad/refine-query`.
+- `frontend/playground/LLMTag/generateResponse.js` expects `environment.llmFunctions.webSearchBasic` and `environment.llmFunctions.webSearchDetailed`.
+- Both web search functions expect the query-refinement function alias to be `refineSearchQuery`.
+
+## Documentation Map
+
+- `backend/README.md` explains backend setup, configuration, routes, and request examples.
+- `frontend/README.md` explains the frontend function package and platform setup order.
+- Each function and playground folder contains its own README with copy-ready setup notes for that specific component.
